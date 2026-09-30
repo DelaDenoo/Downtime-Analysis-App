@@ -1910,10 +1910,14 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
 
     _show_logo_if_present()
 
+    window_start = roaster["Date"].min()
+    window_end = roaster["Date"].max()
+
     dc_header(
         "Downtime & OEE Intelligence", "Barry Callebaut Ghana · Cocoa Processing",
         dc_pill(_ICON_BRANCH, line_name, "orange")
-        + dc_pill(_ICON_CALENDAR_X, f"{roaster['Date'].max().day} {roaster['Date'].max().strftime('%b %Y')} window", "gray")
+        + dc_pill(_ICON_CALENDAR_X, f"{window_start.day} {window_start.strftime('%b %Y')} \u2013 "
+                                     f"{window_end.day} {window_end.strftime('%b %Y')}", "gray")
         + dc_pill(_ICON_GAUGE, f"Avg OEE {line_oee:.1f}%", "green"),
     )
 
@@ -2383,15 +2387,24 @@ def render_presses(cfg, dfs_raw, eq_titles, press_category_data, line_name, disc
         press_data[press] = d
         press_oee[press] = d["OEE_Percentage"].mean()
     line_oee = float(np.mean(list(press_oee.values())))
-    ref_date = press_data[first_press]["Date"].max()
+    window_start = press_data[first_press]["Date"].min()
+    window_end = press_data[first_press]["Date"].max()
 
     _show_logo_if_present()
 
+    # No line-level "mean of N presses" OEE pill here on purpose: with each
+    # press's own "Average OEE" card visible right below (the first press's
+    # expander is open by default), a second, differently-scoped "Average
+    # OEE" figure in the header read as a contradiction, not a summary -
+    # confirmed confusing in practice, not just in theory. line_oee is
+    # still computed and still shown in the Report Export tab, where it's
+    # the only OEE figure on the page and the "(mean of presses)" label
+    # has no competing per-press card next to it to conflict with.
     dc_header(
         "Downtime & OEE Intelligence", "Barry Callebaut Ghana · Cocoa Processing",
         dc_pill(_ICON_BRANCH, line_name, "orange")
-        + dc_pill(_ICON_CALENDAR_X, f"{ref_date.day} {ref_date.strftime('%b %Y')} window", "gray")
-        + dc_pill(_ICON_GAUGE, f"Avg OEE {line_oee:.1f}% (mean of {len(presses)} presses)", "green"),
+        + dc_pill(_ICON_CALENDAR_X, f"{window_start.day} {window_start.strftime('%b %Y')} \u2013 "
+                                     f"{window_end.day} {window_end.strftime('%b %Y')}", "gray"),
     )
     st.markdown(
         f"**{len(press_data[first_press])} days analysed** after exclusions"
@@ -2652,15 +2665,24 @@ def render_moulding_line(cfg, dfs_raw, eq_titles, unit_category_data, line_name,
         unit_data[unit_label] = d
         unit_oee[unit_label] = d["OEE_Percentage"].mean()
     line_oee = float(np.mean(list(unit_oee.values())))
-    ref_date = unit_data[first_unit]["Date"].max()
+    window_start = unit_data[first_unit]["Date"].min()
+    window_end = unit_data[first_unit]["Date"].max()
 
     _show_logo_if_present()
 
+    # No line-level "mean of N units" OEE pill here on purpose: with each
+    # unit's own "Average OEE" card visible right below (the first unit's
+    # expander is open by default), a second, differently-scoped "Average
+    # OEE" figure in the header read as a contradiction, not a summary -
+    # confirmed confusing in practice, not just in theory. line_oee is
+    # still computed and still shown in the Report Export tab, where it's
+    # the only OEE figure on the page and the "(mean of units)" label has
+    # no competing per-unit card next to it to conflict with.
     dc_header(
         "Downtime & OEE Intelligence", "Barry Callebaut Ghana · Cocoa Processing",
         dc_pill(_ICON_BRANCH, line_name, "orange")
-        + dc_pill(_ICON_CALENDAR_X, f"{ref_date.day} {ref_date.strftime('%b %Y')} window", "gray")
-        + dc_pill(_ICON_GAUGE, f"Avg OEE {line_oee:.1f}% (mean of {len(units)} units)", "green"),
+        + dc_pill(_ICON_CALENDAR_X, f"{window_start.day} {window_start.strftime('%b %Y')} \u2013 "
+                                     f"{window_end.day} {window_end.strftime('%b %Y')}", "gray"),
     )
     st.markdown(
         f"**{len(unit_data[first_unit])} days analysed** after exclusions"
