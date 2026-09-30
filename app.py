@@ -320,8 +320,13 @@ def _normalize_tag(s):
     # of the same plant - the letter O and digit 0 used interchangeably for
     # the same equipment code across different file versions. Treating them
     # as equivalent for matching purposes is what makes both resolve to the
-    # same unit.
-    return s.lower().replace("o", "0")
+    # same unit. Also confirmed on Butter Moulding's real file: the config
+    # key "Butter Moulding: TM11" (no space before the colon) didn't match
+    # the file's real anchor text "Butter Moulding : TM11" (space before
+    # the colon) until whitespace was stripped too - same principle as the
+    # O/0 case, a superficial formatting difference that shouldn't block
+    # an otherwise-correct match.
+    return s.lower().replace("o", "0").replace(" ", "")
 
 
 def resolve_unit_block(unit_key, discovered_blocks):
@@ -467,6 +472,7 @@ def plot_theme_bar(summary, title, color):
     fig, ax = plt.subplots(figsize=(10, max(3, 0.5 * len(summary))))
     bars = ax.barh(summary["Theme"], summary["Total_Duration_hours"], color=color)
     ax.bar_label(bars, fmt="%.1f hrs", padding=3)
+    ax.set_xlim(0, max(summary["Total_Duration_hours"].max(), 0.1) * 1.15)  # room for the label text itself
     ax.set_title(title, fontsize=13, fontweight="bold")
     ax.set_xlabel("Total Duration (hours)")
     ax.invert_yaxis()
@@ -499,9 +505,13 @@ def render_theme_section(label, reasons_df, theme_patterns, color):
         return summary, fig
 
 
-def collision_aware_quadrant(q, title):
+def collision_aware_quadrant(q, title, label_col="Allocated_To"):
     """Frequency-vs-duration maintenance-strategy quadrant, log scale, with
-    collision-aware label placement so bubbles and text don't overlap."""
+    collision-aware label placement so bubbles and text don't overlap.
+    label_col defaults to "Allocated_To" (Barth/Buhler's attributed-source
+    column) but the Moulding lines pass "Unit" instead, since they have no
+    cross-unit reattribution - each bubble is a whole analysed unit, not a
+    source within one roaster's comments."""
     med_count = q["Total_Count"].median()
     med_dur = q["Avg_Mins_per_Event"].median()
 
@@ -559,7 +569,7 @@ def collision_aware_quadrant(q, title):
     for idx in q.assign(_s=sizes).sort_values("_s", ascending=False).index:
         row = q.loc[idx]
         x, y = row["Total_Count"], row["Avg_Mins_per_Event"]
-        txt = (f"{row['Allocated_To']}\n{row['Total_Count']:.0f} ev \u00b7 "
+        txt = (f"{row[label_col]}\n{row['Total_Count']:.0f} ev \u00b7 "
                f"{row['Avg_Mins_per_Event']:.0f} min \u00b7 {row['Total_Duration_hours']:.0f} hrs")
         chosen = None
         for dx, dy in CANDIDATES:
@@ -607,7 +617,7 @@ def collision_aware_quadrant(q, title):
     ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.01, 1), fontsize=9)
     ax.grid(True, alpha=0.25, which="both")
     plt.tight_layout()
-    return fig, q[["Allocated_To", "Total_Count", "Avg_Mins_per_Event", "Total_Duration_hours",
+    return fig, q[[label_col, "Total_Count", "Avg_Mins_per_Event", "Total_Duration_hours",
                    "Strategy", "Recommended Action"]]
 
 
@@ -1262,12 +1272,129 @@ PRESSES_CFG = {
     "exclude_march_default": False,
 }
 
+LIQUOR_MOULDING_THEME_PATTERNS = {
+    "Cleaning / Sanitation": ['\\bclean(ing)?\\b', '\\bfilter check\\b', '\\bmagnet cleaning\\b', '\\bpest treatment\\b'],
+    "Raw Material / Liquor Supply Shortage": ['\\bliquor shortage\\b', '\\braw material shortage\\b', '\\bunavailable\\b', '\\btruck availability\\b', '\\bstorage capacity\\b'],
+    "Demand-Driven / No Production Need": ['\\bno demand\\b'],
+    "Dosing System Fault": ['\\bdosing\\b'],
+    "Tempering / Heating System Fault": ['\\breheating\\b', '\\btempering\\b', '\\bmass temperature\\b', '\\btemperature\\b', '\\bhigh pressure\\b', '\\bheating zone\\b'],
+    "Cooling Tunnel Fault": ['\\btunnel\\b'],
+    "Weighing / Metal Detection Fault": ['\\bweight system\\b', '\\bmetal detector\\b'],
+    "Quality Issue": ['\\bquality\\b'],
+    "Line Sequencing / Conflict": ['\\bconflict\\b'],
+    "Packaging Equipment Fault": ['\\bpackaging equipment\\b'],
+    "Changeover / Product Change": ['\\bpackaging change\\b', '\\bproduct change\\b', '\\bchange.?over\\b'],
+    "Material Handling / Conveyor": ['\\bconveyor\\b'],
+    "Mechanical / Drive System Fault": ['\\bmotor\\b', '\\bchain\\b', '\\bgearbox\\b', '\\bbearing\\b'],
+    "Control System / Automation Fault": ['\\bMES-?PLC\\b', '\\bcommunication failure\\b', '\\bcontrol voltage\\b', '\\blocal isolator\\b', '\\bautomation\\b'],
+    "Safety / Emergency Stop": ['\\bemergency stop\\b', '\\bE-?stop\\b', '\\bemergency\\b'],
+    "Feed System / Machine Readiness": ['\\bfeed pump\\b', '\\bmachine not ready\\b'],
+    "Planned / Scheduled Maintenance": ['\\bmaintenance\\b', '\\bengineering\\b', '\\bcivil works\\b', '\\bweekly shutdown\\b', '\\bweekly start ?up\\b', '\\bproduction test\\b', '\\binventory\\b'],
+    "Staffing / Labor Availability": ['\\babsenteeism\\b', '\\bprocess knowledge\\b', '\\bteam meeting\\b', '\\bteam brief\\b'],
+    "Minor Stops / Micro-Stoppages": ['\\bminor stop'],
+    "Generic / Unspecified Waiting": ['\\bwaiting time\\b'],
+    "No Specific Cause Given": ['\\bunknown\\b', '\\bplease comment\\b', '\\bother technical issue\\b', '\\bgeneral alarm\\b'],
+}
+
+LIQUOR_MOULDING_UNITS = {
+    "TM41": {"oee_source": "Liquor Moulding: TM41",
+             "other_units": ["Liquor Moulding: ML", "Liquor Moulding: PK Group"], "color": "#d64545"},
+    "ML41": {"oee_source": "ML41: ML41", "other_units": ["ML41: PK41"], "color": "#4a7a96"},
+    "ML42": {"oee_source": "ML42: ML42", "other_units": ["ML42: PK42"], "color": "#3f8f6d"},
+}
+
+# Moulding lines are a different shape again from both Barth/Buhler and
+# Presses: multiple fully-analysed units (own OEE, own reason log, own
+# themes - no single roaster whose comments get reattributed), but each
+# unit's number of supporting units VARIES (TM41 has two, ML41/ML42 have
+# one each) rather than Presses' fixed one-LCS-per-press pattern. So this
+# uses "units" with a LIST of other_units per entry, and its own
+# render_moulding_line(), rather than reusing render_presses() as-is.
+LIQUOR_MOULDING_CFG = {
+    "kind": "moulding",
+    "file_label_prefixes": ["Liquor Moulding", "ML41", "ML42"],
+    "sequence": ["Liquor Moulding: TM41", "Liquor Moulding: ML", "Liquor Moulding: PK Group",
+                "ML41: ML41", "ML41: PK41", "ML42: ML42", "ML42: PK42"],
+    "daily_cols": {
+        "Liquor Moulding: TM41":     {"usecols": "E,H",  "skiprows": 6},
+        "Liquor Moulding: ML":       {"usecols": "E,J",  "skiprows": 8},
+        "Liquor Moulding: PK Group": {"usecols": "E,P",  "skiprows": 7},
+        "ML41: ML41":                {"usecols": "E,X",  "skiprows": 7},
+        "ML41: PK41":                {"usecols": "E,AF", "skiprows": 7},
+        "ML42: ML42":                {"usecols": "E,AP", "skiprows": 7},
+        "ML42: PK42":                {"usecols": "E,AU", "skiprows": 7},
+    },
+    "units": LIQUOR_MOULDING_UNITS,
+    "category_cols": {
+        "Liquor Moulding: TM41": "AN,AO,AW,BA,BC,BE",
+        "ML41: ML41":            "BZ,CA,CC,CG,CI,CK",
+        "ML42: ML42":            "DF,DG,DI,DM,DO,DQ",
+    },
+    "category_skiprows": 386,
+    "theme_patterns": LIQUOR_MOULDING_THEME_PATTERNS,
+    "exclude_march_default": False,
+}
+
+BUTTER_MOULDING_THEME_PATTERNS = {
+    "Cleaning / Sanitation": ['\\bclean(ing)?\\b', '\\bfilter check\\b', '\\bmagnet cleaning\\b', '\\bpest treatment\\b'],
+    "Raw Material / Supply Shortage": ['\\bbutter shortage\\b', '\\braw material shortage\\b', '\\bunavailable\\b'],
+    "Demand-Driven / No Production Need": ['\\bno demand\\b', '\\bahead of schedule\\b'],
+    "Dosing System Fault": ['\\bdosing\\b', '\\bpipe not clear\\b'],
+    "Tempering / Heating System Fault": ['\\breheating\\b', '\\btempering\\b', '\\bmass temperature\\b', '\\btemperature\\b', '\\bhigh pressure\\b', '\\bthermistor\\b'],
+    "Cooling Tunnel Fault": ['\\btunnel\\b'],
+    "Weighing / Metal Detection Fault": ['\\bweight system\\b', '\\bmetal detector\\b'],
+    "Quality Issue": ['\\bquality\\b'],
+    "Line Sequencing / Conflict": ['\\bconflict\\b'],
+    "Packaging Equipment Fault": ['\\bpackaging equipment\\b'],
+    "Changeover / Product Change": ['\\bpackaging change\\b', '\\bproduct change\\b', '\\bchange.?over\\b'],
+    "Material Handling / Conveyor": ['\\bconveyor\\b'],
+    "Control System / Automation Fault": ['\\bMES-?PLC\\b', '\\bcommunication failure\\b', '\\bcontrol voltage\\b', '\\blocal isolator\\b', '\\bautomation\\b', '\\bground fault interrupt\\b'],
+    "Safety / Emergency Stop": ['\\bemergency stop\\b', '\\bE-?stop\\b', '\\bemergency\\b'],
+    "Feed System / Machine Readiness": ['\\bfeed pump\\b', '\\bmachine not ready\\b'],
+    "Planned / Scheduled Maintenance": ['\\bmaintenance\\b', '\\bengineering\\b', '\\bcivil works\\b', '\\bweekly shutdown\\b', '\\bweekly start ?up\\b', '\\bproduction test\\b', '\\binventory\\b'],
+    "Staffing / Breaks / Shift Handover": ['\\babsenteeism\\b', '\\bprocess knowledge\\b', '\\bteam meeting\\b', '\\bteam brief\\b', '\\blunch break\\b', '\\bprayer\\b', '\\bhandover\\b', '\\bshift change\\b'],
+    "Force Majeure / Utilities": ['\\butilit', '\\bforce majeure\\b'],
+    "Minor Stops / Micro-Stoppages": ['\\bminor stop'],
+    "Generic / Unspecified Waiting": ['\\bwaiting time\\b'],
+    "No Specific Cause Given": ['\\bunknown\\b', '\\bplease comment\\b', '\\bother technical issue\\b'],
+}
+
+BUTTER_MOULDING_UNITS = {
+    "TM11": {"oee_source": "Butter Moulding: TM11", "other_units": ["Butter Moulding: ML"], "color": "#d64545"},
+    "ML11": {"oee_source": "ML11: ML11", "other_units": [], "color": "#4a7a96"},
+    "ML12": {"oee_source": "ML12: ML12", "other_units": [], "color": "#3f8f6d"},
+}
+
+BUTTER_MOULDING_CFG = {
+    "kind": "moulding",
+    "file_label_prefixes": ["Butter Moulding", "ML11", "ML12"],
+    "sequence": ["Butter Moulding: TM11", "Butter Moulding: ML", "ML11: ML11", "ML12: ML12"],
+    "daily_cols": {
+        "Butter Moulding: TM11": {"usecols": "E,H", "skiprows": 6},
+        "Butter Moulding: ML":   {"usecols": "E,J", "skiprows": 8},
+        "ML11: ML11":            {"usecols": "E,P", "skiprows": 7},
+        "ML12: ML12":            {"usecols": "E,X", "skiprows": 7},
+    },
+    "units": BUTTER_MOULDING_UNITS,
+    "category_cols": {
+        "Butter Moulding: TM11": "AN,AO,AW,BA,BC,BE",
+        "ML11: ML11":            "BZ,CA,CC,CG,CI,CK",
+        "ML12: ML12":            "DF,DG,DI,DM,DO,DQ",
+    },
+    "category_skiprows": 386,
+    "theme_patterns": BUTTER_MOULDING_THEME_PATTERNS,
+    "exclude_march_default": False,
+}
+
+
 # Every selectable line, keyed by the name shown in the sidebar dropdown.
 # Adding a line to the app means adding one entry here.
 LINES = {
     "Barth Line": BARTH,
     "Buhler Line": LINE2,
     "Presses": PRESSES_CFG,
+    "Liquor Moulding": LIQUOR_MOULDING_CFG,
+    "Butter Moulding": BUTTER_MOULDING_CFG,
 }
 
 
@@ -1633,6 +1760,20 @@ def load_all_data(file_bytes, line_choice):
                     io.BytesIO(file_bytes), cfg["category_cols"][unit], cfg["category_skiprows"])
                 discovery_status[unit] = {"source": "hardcoded fallback", "detail": cfg["category_cols"][unit]}
         return dfs_raw, eq_titles, press_category_data, {}, discovery_status
+
+    if cfg.get("kind") == "moulding":
+        unit_category_data = {}
+        for unit_label, roles in cfg["units"].items():
+            unit = roles["oee_source"]
+            unit_block = resolve_unit_block(unit, discovered)
+            if unit_block is not None:
+                unit_category_data[unit_label] = load_discovered_block(file_bytes, unit_block)
+                discovery_status[unit] = {"source": "discovered", "detail": unit_block}
+            else:
+                unit_category_data[unit_label] = load_category_block(
+                    io.BytesIO(file_bytes), cfg["category_cols"][unit], cfg["category_skiprows"])
+                discovery_status[unit] = {"source": "hardcoded fallback", "detail": cfg["category_cols"][unit]}
+        return dfs_raw, eq_titles, unit_category_data, {}, discovery_status
 
     roaster_key = cfg["roaster"]
     roaster_block = resolve_unit_block(roaster_key, discovered)
@@ -2026,12 +2167,14 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
                   for a in alloc["Allocated_To"]]
         b1 = axes[0].barh(alloc["Allocated_To"], alloc["Total_Duration_hours"], color=colors)
         axes[0].bar_label(b1, fmt="%.1f hrs", padding=3, fontsize=8)
+        axes[0].set_xlim(0, max(alloc["Total_Duration_hours"].max(), 0.1) * 1.15)  # room for the label text itself
         axes[0].set_title("Downtime by Attributed Source", fontsize=12, fontweight="bold")
         axes[0].invert_yaxis()
         known = alloc[~alloc["Allocated_To"].isin(["Unattributable", "Unknown"])]
         if len(known):
             b2 = axes[1].barh(known["Allocated_To"], known["Avg_Mins_per_Event"], color="#e08a3c")
             axes[1].bar_label(b2, fmt="%.1f min", padding=3, fontsize=8)
+            axes[1].set_xlim(0, max(known["Avg_Mins_per_Event"].max(), 0.1) * 1.15)  # room for the label text itself
         axes[1].set_title("Average Duration per Event (attributed only)", fontsize=12, fontweight="bold")
         axes[1].invert_yaxis()
         plt.tight_layout()
@@ -2069,6 +2212,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
                 fig, ax = plt.subplots(figsize=(10, 5))
                 bars = ax.barh(pl["Source"], pl["OEE gain (pp)"], color="#3f8f6d")
                 ax.bar_label(bars, fmt="+%.2f pp", padding=3)
+                ax.set_xlim(0, max(pl["OEE gain (pp)"].max(), 0.1) * 1.15)  # room for the label text itself
                 ax.set_title("Potential OEE Gain if Each Source Were Fully Eliminated", fontsize=12, fontweight="bold")
                 ax.invert_yaxis()
                 plt.tight_layout()
@@ -2471,6 +2615,292 @@ def render_presses(cfg, dfs_raw, eq_titles, press_category_data, line_name, disc
         render_report_tab(line_name, key_metrics, report_figures, report_comments)
 
 
+def render_moulding_line(cfg, dfs_raw, eq_titles, unit_category_data, line_name, discovery_status=None):
+    """Moulding lines (Liquor Moulding, Butter Moulding) are a third shape,
+    different from both Barth/Buhler's single-roaster-with-reattribution
+    and Presses' fixed one-LCS-per-press pattern: multiple fully-analysed
+    units (own OEE, own reason log, own themes), each with its OWN LIST of
+    supporting units - which can be empty (ML11/ML12 have none), one
+    (Presses' shape), or two (TM41 has ML and PK Group). A shared theme
+    library covers every unit on the line. Adds a Maintenance Quadrant
+    combining every unit into one chart (one bubble per unit, not per
+    theme), the direct equivalent of Barth's Allocated_To quadrant with no
+    cross-unit reattribution to drive it."""
+    units = cfg["units"]
+    first_unit, first_roles = next(iter(units.items()))
+    ref_unit = first_roles["oee_source"]
+
+    if discovery_status and _show_prefix_mismatch_error(line_name, discovery_status.get("__meta__", {})):
+        return
+
+    if dfs_raw[ref_unit].empty:
+        st.error(f"No data loaded for {ref_unit} - check skiprows/usecols against the real file.")
+        return
+
+    if discovery_status:
+        _render_discovery_sidebar(discovery_status)
+
+    excluded, month_labels = _render_month_exclusion(
+        [dfs_raw[roles["oee_source"]] for roles in units.values()], cfg.get("exclude_march_default"))
+
+    dfs = {unit: apply_month_exclusion(d, excluded) for unit, d in dfs_raw.items()}
+
+    unit_data, unit_oee = {}, {}
+    for unit_label, roles in units.items():
+        d = dfs[roles["oee_source"]].copy()
+        d["OEE_Percentage"] = ((24 - d["Duration (hours)"]) / 24) * 100
+        unit_data[unit_label] = d
+        unit_oee[unit_label] = d["OEE_Percentage"].mean()
+    line_oee = float(np.mean(list(unit_oee.values())))
+    ref_date = unit_data[first_unit]["Date"].max()
+
+    _show_logo_if_present()
+
+    dc_header(
+        "Downtime & OEE Intelligence", "Barry Callebaut Ghana · Cocoa Processing",
+        dc_pill(_ICON_BRANCH, line_name, "orange")
+        + dc_pill(_ICON_CALENDAR_X, f"{ref_date.day} {ref_date.strftime('%b %Y')} window", "gray")
+        + dc_pill(_ICON_GAUGE, f"Avg OEE {line_oee:.1f}% (mean of {len(units)} units)", "green"),
+    )
+    st.markdown(
+        f"**{len(unit_data[first_unit])} days analysed** after exclusions"
+        + (f" (excluded: {', '.join(month_labels[ym] for ym in excluded)})" if excluded else "")
+    )
+
+    report_figures = []
+    report_comments = []
+
+    def emit(section, title, fig):
+        st.pyplot(fig)
+        report_figures.append((section, title, fig))
+
+    tab_names = ["OEE & Data Integrity", "Own Reason Logs", "Raw Logs", "Predictive Analytics",
+                "Maintenance Quadrant", "Report Export"]
+    tab_overview, tab_ownlogs, tab_raw, tab_predictive, tab_quadrant, tab_report = st.tabs(tab_names)
+
+    # ================= TAB: OEE & Data Integrity =================
+    with tab_overview:
+        st.markdown(
+            dc_card_head(_ICON_UPLOAD, "Load Daily Downtime Data",
+                        "Real column headers checked against the config, not just trusted"),
+            unsafe_allow_html=True,
+        )
+        id_rows = []
+        for unit, d in dfs.items():
+            date_range = f"{d['Date'].min().date()} to {d['Date'].max().date()}" if len(d) else "N/A"
+            id_rows.append({"Config name": unit, "Real name from Excel header": eq_titles[unit],
+                            "Rows": len(d), "Date range": date_range,
+                            "Total hours": round(d["Duration (hours)"].sum(), 1)})
+        st.dataframe(pd.DataFrame(id_rows), use_container_width=True)
+        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
+        for i, (unit_label, roles) in enumerate(units.items()):
+            oee_unit, other_units, color = roles["oee_source"], roles["other_units"], roles["color"]
+            d = unit_data[unit_label]
+            with st.expander(f"{unit_label} ({oee_unit})", expanded=(i == 0)):
+                st.markdown(
+                    dc_card_head(_ICON_SCALE, "Data Integrity Check",
+                                f"Do {', '.join(other_units)} track {oee_unit}?" if other_units
+                                else f"{oee_unit} has no supporting unit to compare against"),
+                    unsafe_allow_html=True,
+                )
+                if other_units:
+                    merged = d[["Date", "Duration (hours)"]].rename(columns={"Duration (hours)": oee_unit})
+                    for u in other_units:
+                        merged = merged.merge(
+                            dfs[u][["Date", "Duration (hours)"]].rename(columns={"Duration (hours)": u}),
+                            on="Date", how="inner")
+                    merged["Sum_of_others"] = merged[other_units].sum(axis=1)
+                    r = merged["Sum_of_others"].corr(merged[oee_unit])
+                    c1, c2, c3 = st.columns(3)
+                    c1.markdown(f'<div class="dc-card"><span class="dc-metric-label">Mean {oee_unit}</span>'
+                               f'<div class="dc-metric-value" style="font-size:22px;">{merged[oee_unit].mean():.2f} hrs/day</div></div>',
+                               unsafe_allow_html=True)
+                    c2.markdown(f'<div class="dc-card"><span class="dc-metric-label">Mean sum of others</span>'
+                               f'<div class="dc-metric-value" style="font-size:22px;">{merged["Sum_of_others"].mean():.2f} hrs/day</div></div>',
+                               unsafe_allow_html=True)
+                    c3.markdown(f'<div class="dc-card"><span class="dc-metric-label">Correlation (r)</span>'
+                               f'<div class="dc-metric-value" style="font-size:22px;">{r:.3f}</div></div>',
+                               unsafe_allow_html=True)
+                    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+                else:
+                    st.info(f"{unit_label} has no supporting units in this config - nothing to compare here.")
+
+                d["OEE_7Day_SMA"] = d["OEE_Percentage"].rolling(7, min_periods=1).mean()
+                d["OEE_7Day_EWMA"] = d["OEE_Percentage"].ewm(span=7, adjust=False).mean()
+                d["Downtime_Lag_1"] = d["Duration (hours)"].shift(1)
+                d["Cumulative_Downtime"] = d["Duration (hours)"].cumsum()
+                best_row = d.loc[d["OEE_Percentage"].idxmax()]
+                worst_row = d.loc[d["OEE_Percentage"].idxmin()]
+
+                m1, m2, m3 = st.columns(3)
+                m1.markdown(dc_metric_card("Average OEE", f"{unit_oee[unit_label]:.1f}%", "filtered window", _ICON_GAUGE, "orange"), unsafe_allow_html=True)
+                m2.markdown(dc_metric_card("Best Day", f"{best_row['OEE_Percentage']:.1f}%", f"{best_row['Date'].day} {best_row['Date'].strftime('%b')}", _ICON_UP, "green"), unsafe_allow_html=True)
+                m3.markdown(dc_metric_card("Worst Day", f"{worst_row['OEE_Percentage']:.1f}%", f"{worst_row['Date'].day} {worst_row['Date'].strftime('%b')}", _ICON_DOWN, "coral"), unsafe_allow_html=True)
+                st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+
+                fig, ax = plt.subplots(figsize=(12, 5))
+                ax.plot(d["Date"], d["OEE_Percentage"], label="Daily OEE (raw)", alpha=0.3, color="grey", marker=".")
+                ax.plot(d["Date"], d["OEE_7Day_SMA"], label="7-day SMA", color="#e0a458", linewidth=2, linestyle="--")
+                ax.plot(d["Date"], d["OEE_7Day_EWMA"], label="7-day EWMA", color=color, linewidth=2)
+                ax.axhline(unit_oee[unit_label], color=color, linestyle=":", linewidth=2, alpha=0.7, label=f"Mean ({unit_oee[unit_label]:.1f}%)")
+                ax.set_title(f"{unit_label}: OEE Trend", fontsize=13, fontweight="bold")
+                ax.set_ylim(0, 105); ax.legend(); ax.grid(alpha=0.3)
+                plt.tight_layout()
+                emit("OEE & Data Integrity", f"{unit_label}: OEE Trend", fig)
+
+                mean_dt = d["Duration (hours)"].mean()
+                ucl = min(mean_dt + 3 * d["Duration (hours)"].std(), 24)
+                out = d[d["Duration (hours)"] >= ucl]
+                fig, ax = plt.subplots(figsize=(12, 4.5))
+                ax.plot(d["Date"], d["Duration (hours)"], marker="o", color="grey", alpha=0.6, markersize=4, label="Daily downtime")
+                ax.axhline(mean_dt, color="#e0a458", linestyle="--", linewidth=2, label=f"Mean ({mean_dt:.2f} hrs)")
+                ax.axhline(ucl, color=color, linewidth=2, label=f"UCL +3\u03c3 ({ucl:.2f} hrs)")
+                ax.scatter(out["Date"], out["Duration (hours)"], color=color, s=80, zorder=5, label=f"Special cause ({len(out)} days)")
+                ax.set_title(f"{unit_label}: SPC Control Chart", fontsize=13, fontweight="bold")
+                ax.legend(); ax.grid(alpha=0.3)
+                plt.tight_layout()
+                emit("OEE & Data Integrity", f"{unit_label}: SPC Control Chart", fig)
+
+                r_val = d["Downtime_Lag_1"].corr(d["Duration (hours)"])
+                fig, ax = plt.subplots(figsize=(6, 6))
+                sns.regplot(data=d, x="Downtime_Lag_1", y="Duration (hours)",
+                           scatter_kws={"alpha": 0.5, "color": color}, line_kws={"color": "#e0a458"}, ax=ax)
+                ax.annotate(f"r = {r_val:.3f}", xy=(0.03, 0.97), xycoords="axes fraction", ha="left", va="top",
+                           fontsize=10, bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9))
+                ax.set_title(f"{unit_label}: 1-Day Autocorrelation", fontsize=12, fontweight="bold")
+                plt.tight_layout()
+                emit("OEE & Data Integrity", f"{unit_label}: 1-Day Autocorrelation", fig)
+
+    # ================= TAB: Own Reason Logs =================
+    with tab_ownlogs:
+        st.header("Each Unit's Own Reason Log")
+        st.caption("Every analysed unit has its own \"By Category\" block - no reattribution needed, unlike Barth/Buhler.")
+        theme_patterns = cfg["theme_patterns"]
+        for unit_label, roles in units.items():
+            df_own = unit_category_data.get(unit_label)
+            oee_unit, color = roles["oee_source"], roles["color"]
+            st.write(f"**{unit_label}** ({oee_unit}): "
+                    f"{0 if df_own is None else len(df_own)} reason rows loaded "
+                    f"({0.0 if df_own is None else df_own['Duration_hours'].sum():.1f} hrs total)")
+            summary, fig = render_theme_section(unit_label, df_own, theme_patterns, color)
+            if summary is not None:
+                report_figures.append(("Own Reason Logs", f"{unit_label}: Theme Breakdown", fig))
+            report_comments.append((unit_label, f"{unit_label}: comments grouped by theme",
+                                    themed_comments(df_own, theme_patterns)))
+
+    # ================= TAB: Raw Logs =================
+    with tab_raw:
+        st.header("Per-Unit Raw Logs (reference only)")
+        st.caption("Supporting units especially are not independent measurements - see the Data Integrity Check above.")
+        raw_rows = []
+        for unit in cfg["sequence"]:
+            d = dfs.get(unit)
+            if d is None or d.empty:
+                continue
+            raw_rows.append({"Unit": unit, "Total downtime (hrs)": round(d["Duration (hours)"].sum(), 1),
+                             "Mean daily (hrs)": round(d["Duration (hours)"].mean(), 2), "Days": len(d)})
+        raw_df = pd.DataFrame(raw_rows)
+        st.dataframe(raw_df, use_container_width=True)
+        oee_units = {roles["oee_source"] for roles in units.values()}
+        fig, ax = plt.subplots(figsize=(11, 5))
+        cols = ["#d64545" if u in oee_units else "#9aa5ad" for u in raw_df["Unit"]]
+        bars = ax.bar(raw_df["Unit"], raw_df["Total downtime (hrs)"], color=cols)
+        ax.bar_label(bars, fmt="%.0f", padding=3, fontsize=8)
+        ax.set_title("Self-Reported Downtime per Sub-Unit\n(analysed OEE-source units in red)", fontsize=12, fontweight="bold")
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
+        plt.tight_layout()
+        emit("Raw Logs", "Self-Reported Downtime per Sub-Unit", fig)
+
+    # ================= TAB: Predictive Analytics =================
+    with tab_predictive:
+        st.header("Predictive Analytics")
+        theme_patterns = cfg["theme_patterns"]
+
+        for unit_label, roles in units.items():
+            oee_unit, color = roles["oee_source"], roles["color"]
+            d = unit_data[unit_label]
+            timeframe_days = len(d)
+            with st.expander(f"{unit_label}: forecasts", expanded=False):
+                st.subheader("Monte Carlo: 30-Day OEE Forecast")
+                sim_oee = bootstrap_oee_simulation(d["Duration (hours)"])
+                p10, p50, p90 = np.percentile(sim_oee, [10, 50, 90])
+                c1, c2, c3 = st.columns(3)
+                c1.metric("P10 (worst)", f"{p10:.1f}%")
+                c2.metric("P50 (typical)", f"{p50:.1f}%")
+                c3.metric("P90 (best)", f"{p90:.1f}%")
+                fig, ax = plt.subplots(figsize=(9, 4.5))
+                ax.hist(sim_oee, bins=60, color=color, edgecolor="white", alpha=0.85)
+                ax.axvline(p50, color="green", linestyle="--", linewidth=2, label=f"P50 ({p50:.1f}%)")
+                ax.axvline(p10, color="red", linestyle=":", linewidth=2, label=f"P10 ({p10:.1f}%)")
+                ax.axvline(p90, color="red", linestyle=":", linewidth=2, label=f"P90 ({p90:.1f}%)")
+                ax.set_title(f"{unit_label}: Simulated 30-Day OEE Distribution", fontsize=12, fontweight="bold")
+                ax.legend()
+                plt.tight_layout()
+                emit("Predictive Analytics", f"{unit_label}: Monte Carlo OEE Forecast", fig)
+
+                theme_summary, _ = theme_breakdown_data(unit_category_data.get(unit_label, pd.DataFrame()), theme_patterns)
+                if not theme_summary.empty:
+                    rng = np.random.default_rng(42)
+                    risk_rows = []
+                    for _, row in theme_summary.iterrows():
+                        sim = simulate_category_downtime(row["Total_Duration_hours"], row["Total_Count"], timeframe_days, rng=rng)
+                        risk_rows.append({"Theme": row["Theme"], "Historical (hrs)": row["Total_Duration_hours"],
+                                          "Sim P10 (30d)": np.percentile(sim, 10), "Sim P50 (30d)": np.percentile(sim, 50),
+                                          "Sim P90 (30d)": np.percentile(sim, 90)})
+                    risk_df = pd.DataFrame(risk_rows).sort_values("Sim P90 (30d)", ascending=False)
+                    st.dataframe(risk_df.round(2), use_container_width=True)
+
+                st.subheader("Weibull Reliability - Top 3 Themes")
+                weibull_df = compute_weibull(theme_summary, timeframe_days)
+                if not weibull_df.empty:
+                    st.dataframe(weibull_df.round(2), use_container_width=True)
+                    fig = plot_weibull(weibull_df)
+                    emit("Predictive Analytics", f"{unit_label}: Weibull Reliability", fig)
+                else:
+                    st.info("Not enough themed data to compute Weibull parameters.")
+
+    # ================= TAB: Maintenance Quadrant =================
+    with tab_quadrant:
+        st.header("Maintenance Strategy Quadrant")
+        st.caption(
+            "One bubble per analysed unit, aggregated across each unit's whole reason log - "
+            "the direct equivalent of Barth's Allocated_To quadrant, with no cross-unit "
+            "reattribution to drive it (each bubble is a whole unit, not a theme within one)."
+        )
+        q_rows = []
+        for unit_label, roles in units.items():
+            df_own = unit_category_data.get(unit_label)
+            if df_own is None or df_own.empty:
+                continue
+            total_count = df_own["Count"].sum()
+            total_hours = df_own["Duration_hours"].sum()
+            if total_count <= 0:
+                continue
+            q_rows.append({"Unit": unit_label, "Total_Count": total_count,
+                           "Total_Duration_hours": total_hours,
+                           "Avg_Mins_per_Event": total_hours * 60 / total_count})
+        q = pd.DataFrame(q_rows)
+        if len(q) >= 2:
+            fig, q_labeled = collision_aware_quadrant(q, f"{line_name}: Maintenance Strategy by Unit", label_col="Unit")
+            emit("Maintenance Quadrant", f"{line_name}: Maintenance Strategy by Unit", fig)
+            st.dataframe(q_labeled, use_container_width=True)
+        else:
+            st.info("Fewer than 2 units with logged events - not enough for a quadrant chart.")
+
+    # ================= TAB: Report Export =================
+    with tab_report:
+        total_dt = sum(unit_data[u]["Duration (hours)"].sum() for u in units)
+        key_metrics = [
+            ("Line", line_name),
+            ("Days analysed", len(unit_data[first_unit])),
+            ("Months excluded", ", ".join(month_labels[ym] for ym in excluded) if excluded else "None"),
+            ("Average OEE (mean of units)", f"{line_oee:.2f}%"),
+            ("Total downtime (all units)", f"{total_dt:.1f} hrs"),
+        ]
+        render_report_tab(line_name, key_metrics, report_figures, report_comments)
+
+
 # ============================================================
 # SIDEBAR + DISPATCH
 # ============================================================
@@ -2535,6 +2965,8 @@ def main():
     dfs_raw, eq_titles, cat_data, own_category_data_cached, discovery_status = load_all_data(uploaded_file.getvalue(), line_choice)
     if cfg.get("kind") == "presses":
         render_presses(cfg, dfs_raw, eq_titles, cat_data, line_choice, discovery_status)
+    elif cfg.get("kind") == "moulding":
+        render_moulding_line(cfg, dfs_raw, eq_titles, cat_data, line_choice, discovery_status)
     else:
         render_line(cfg, dfs_raw, eq_titles, cat_data, own_category_data_cached, line_choice, discovery_status)
 
