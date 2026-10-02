@@ -493,13 +493,13 @@ def render_theme_section(label, reasons_df, theme_patterns, color):
         summary, unmapped = theme_breakdown_data(reasons_df, theme_patterns)
         if not unmapped.empty:
             st.warning(f"{len(unmapped)} reason(s) matched no known theme keyword:")
-            st.dataframe(unmapped, use_container_width=True)
+            st.dataframe(unmapped, use_container_width=True, hide_index=True)
         if summary.empty:
             st.info("No themed reasons for this unit.")
             return None, None
         st.write(f"{len(reasons_df) - len(unmapped)} of {len(reasons_df)} reasons grouped into "
                  f"{len(summary)} of {len(theme_patterns)} possible themes")
-        st.dataframe(summary.round(1), use_container_width=True)
+        st.dataframe(summary.round(1), use_container_width=True, hide_index=True)
         fig = plot_theme_bar(summary, f"{label}: Reasons Grouped by Theme", color)
         st.pyplot(fig)
         return summary, fig
@@ -1971,7 +1971,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
             id_rows.append({"Config name": unit, "Real name from Excel header": eq_titles[unit],
                             "Rows": len(d), "Date range": date_range,
                             "Total hours": round(d["Duration (hours)"].sum(), 1)})
-        st.dataframe(pd.DataFrame(id_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(id_rows), use_container_width=True, hide_index=True)
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
         st.markdown(
@@ -2149,7 +2149,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
         df_cat = df_cat_loaded.copy()
         st.write(f"{len(df_cat)} roaster reason rows loaded ({df_cat['Duration_hours'].sum():.1f} hrs total)")
         with st.expander("Preview raw reason rows"):
-            st.dataframe(df_cat.head(10), use_container_width=True)
+            st.dataframe(df_cat.head(10), use_container_width=True, hide_index=True)
 
         if df_cat.empty:
             st.warning(
@@ -2164,7 +2164,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
         df_cat["Allocated_To"] = df_cat.apply(
             lambda row: classify_allocation(row, cfg["equipment_patterns"], cfg["roaster_own_keywords"]), axis=1)
         alloc = build_allocation_summary(df_cat)
-        st.dataframe(alloc.round(2), use_container_width=True)
+        st.dataframe(alloc.round(2), use_container_width=True, hide_index=True)
 
         fig, axes = plt.subplots(1, 2, figsize=(15, 6))
         colors = ["#9aa5ad" if a in ("Unattributable", "Unknown") else "#d64545" if a == "Roaster (own fault)" else "#4a7a96"
@@ -2192,7 +2192,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
         if len(q) >= 2:
             fig, q_labeled = collision_aware_quadrant(q, "Maintenance Strategy by Attributed Source")
             emit("Strategy & Improvement", "Maintenance Strategy Quadrant", fig)
-            st.dataframe(q_labeled.round(1), use_container_width=True)
+            st.dataframe(q_labeled.round(1), use_container_width=True, hide_index=True)
         else:
             st.info("Fewer than 2 attributed sources with valid data - not enough to plot a quadrant.")
 
@@ -2210,7 +2210,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
         else:
             potential = pd.DataFrame(rows).sort_values("OEE gain (pp)", ascending=False).reset_index(drop=True)
             st.write(f"Current Line OEE: {line_oee:.2f}% | total downtime {total_dt:.1f} hrs over {len(roaster)} days")
-            st.dataframe(potential, use_container_width=True)
+            st.dataframe(potential, use_container_width=True, hide_index=True)
             pl = potential[~potential["Source"].isin(["Unattributable", "Unknown"])]
             if len(pl):
                 fig, ax = plt.subplots(figsize=(10, 5))
@@ -2273,7 +2273,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
             raw_rows.append({"Unit": unit, "Total downtime (hrs)": round(d["Duration (hours)"].sum(), 1),
                              "Mean daily (hrs)": round(d["Duration (hours)"].mean(), 2), "Days": len(d)})
         raw_df = pd.DataFrame(raw_rows)
-        st.dataframe(raw_df, use_container_width=True)
+        st.dataframe(raw_df, use_container_width=True, hide_index=True)
         fig, ax = plt.subplots(figsize=(12, 5.5))
         cols = ["#d64545" if u == roaster_key else "#4a7a96" for u in raw_df["Unit"]]
         bars = ax.bar(raw_df["Unit"], raw_df["Total downtime (hrs)"], color=cols)
@@ -2317,7 +2317,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
                                   "Sim P10 (30d)": np.percentile(sim, 10), "Sim P50 (30d)": np.percentile(sim, 50),
                                   "Sim P90 (30d)": np.percentile(sim, 90)})
             risk_df = pd.DataFrame(risk_rows).sort_values("Sim P90 (30d)", ascending=False)
-            st.dataframe(risk_df.round(2), use_container_width=True)
+            st.dataframe(risk_df.round(2), use_container_width=True, hide_index=True)
             fig, ax = plt.subplots(figsize=(10, max(3, 0.5 * len(risk_df))))
             y = np.arange(len(risk_df))
             ax.barh(y, risk_df["Sim P90 (30d)"], color="#e8a0a0", label="P90")
@@ -2333,7 +2333,7 @@ def render_line(cfg, dfs_raw, eq_titles, df_cat_loaded, own_category_data_cached
         st.subheader("Weibull Reliability - Top 3 Problem Sources")
         weibull_df = compute_weibull(alloc[~alloc["Allocated_To"].isin(["Unattributable", "Unknown"])], timeframe_days)
         if not weibull_df.empty:
-            st.dataframe(weibull_df.round(2), use_container_width=True)
+            st.dataframe(weibull_df.round(2), use_container_width=True, hide_index=True)
             fig = plot_weibull(weibull_df)
             emit("Predictive Analytics", "Weibull Reliability Curves", fig)
         else:
@@ -2434,7 +2434,7 @@ def render_presses(cfg, dfs_raw, eq_titles, press_category_data, line_name, disc
             id_rows.append({"Config name": unit, "Real name from Excel header": eq_titles[unit],
                             "Rows": len(d), "Date range": date_range,
                             "Total hours": round(d["Duration (hours)"].sum(), 1)})
-        st.dataframe(pd.DataFrame(id_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(id_rows), use_container_width=True, hide_index=True)
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
         for i, (press, roles) in enumerate(presses.items()):
@@ -2504,6 +2504,8 @@ def render_presses(cfg, dfs_raw, eq_titles, press_category_data, line_name, disc
                 ax.annotate(f"r = {r_val:.3f}", xy=(0.03, 0.97), xycoords="axes fraction", ha="left", va="top",
                            fontsize=10, bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9))
                 ax.set_title(f"{press}: 1-Day Autocorrelation", fontsize=12, fontweight="bold")
+                ax.set_xlabel("Yesterday's Downtime (hours)")
+                ax.set_ylabel("Today's Downtime (hours)")
                 plt.tight_layout()
                 emit("OEE & Data Integrity", f"{press}: 1-Day Autocorrelation", fig)
 
@@ -2535,7 +2537,7 @@ def render_presses(cfg, dfs_raw, eq_titles, press_category_data, line_name, disc
             raw_rows.append({"Unit": unit, "Total downtime (hrs)": round(d["Duration (hours)"].sum(), 1),
                              "Mean daily (hrs)": round(d["Duration (hours)"].mean(), 2), "Days": len(d)})
         raw_df = pd.DataFrame(raw_rows)
-        st.dataframe(raw_df, use_container_width=True)
+        st.dataframe(raw_df, use_container_width=True, hide_index=True)
         oee_units = {roles["oee_source"] for roles in presses.values()}
         fig, ax = plt.subplots(figsize=(11, 5))
         cols = ["#d64545" if u in oee_units else "#9aa5ad" for u in raw_df["Unit"]]
@@ -2568,7 +2570,7 @@ def render_presses(cfg, dfs_raw, eq_titles, press_category_data, line_name, disc
                             "Eta": mtbf / 0.9027, "Beta": 1.5})
         if eq_rows:
             eq_df = pd.DataFrame(eq_rows)
-            st.dataframe(eq_df.round(2), use_container_width=True)
+            st.dataframe(eq_df.round(2), use_container_width=True, hide_index=True)
             fig = plot_weibull(eq_df.rename(columns={"Allocated_To": "Source"}))
             emit("Predictive Analytics", "Equipment-Level Reliability", fig)
 
@@ -2604,12 +2606,12 @@ def render_presses(cfg, dfs_raw, eq_titles, press_category_data, line_name, disc
                                           "Sim P10 (30d)": np.percentile(sim, 10), "Sim P50 (30d)": np.percentile(sim, 50),
                                           "Sim P90 (30d)": np.percentile(sim, 90)})
                     risk_df = pd.DataFrame(risk_rows).sort_values("Sim P90 (30d)", ascending=False)
-                    st.dataframe(risk_df.round(2), use_container_width=True)
+                    st.dataframe(risk_df.round(2), use_container_width=True, hide_index=True)
 
                 st.subheader("Weibull Reliability - Top 3 Themes")
                 weibull_df = compute_weibull(theme_summary, timeframe_days)
                 if not weibull_df.empty:
-                    st.dataframe(weibull_df.round(2), use_container_width=True)
+                    st.dataframe(weibull_df.round(2), use_container_width=True, hide_index=True)
                     fig = plot_weibull(weibull_df)
                     emit("Predictive Analytics", f"{press}: Weibull Reliability", fig)
                 else:
@@ -2713,7 +2715,7 @@ def render_moulding_line(cfg, dfs_raw, eq_titles, unit_category_data, line_name,
             id_rows.append({"Config name": unit, "Real name from Excel header": eq_titles[unit],
                             "Rows": len(d), "Date range": date_range,
                             "Total hours": round(d["Duration (hours)"].sum(), 1)})
-        st.dataframe(pd.DataFrame(id_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(id_rows), use_container_width=True, hide_index=True)
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
         for i, (unit_label, roles) in enumerate(units.items()):
@@ -2791,6 +2793,8 @@ def render_moulding_line(cfg, dfs_raw, eq_titles, unit_category_data, line_name,
                 ax.annotate(f"r = {r_val:.3f}", xy=(0.03, 0.97), xycoords="axes fraction", ha="left", va="top",
                            fontsize=10, bbox=dict(boxstyle="round,pad=0.4", facecolor="white", alpha=0.9))
                 ax.set_title(f"{unit_label}: 1-Day Autocorrelation", fontsize=12, fontweight="bold")
+                ax.set_xlabel("Yesterday's Downtime (hours)")
+                ax.set_ylabel("Today's Downtime (hours)")
                 plt.tight_layout()
                 emit("OEE & Data Integrity", f"{unit_label}: 1-Day Autocorrelation", fig)
 
@@ -2823,7 +2827,7 @@ def render_moulding_line(cfg, dfs_raw, eq_titles, unit_category_data, line_name,
             raw_rows.append({"Unit": unit, "Total downtime (hrs)": round(d["Duration (hours)"].sum(), 1),
                              "Mean daily (hrs)": round(d["Duration (hours)"].mean(), 2), "Days": len(d)})
         raw_df = pd.DataFrame(raw_rows)
-        st.dataframe(raw_df, use_container_width=True)
+        st.dataframe(raw_df, use_container_width=True, hide_index=True)
         oee_units = {roles["oee_source"] for roles in units.values()}
         fig, ax = plt.subplots(figsize=(11, 5))
         cols = ["#d64545" if u in oee_units else "#9aa5ad" for u in raw_df["Unit"]]
@@ -2871,12 +2875,12 @@ def render_moulding_line(cfg, dfs_raw, eq_titles, unit_category_data, line_name,
                                           "Sim P10 (30d)": np.percentile(sim, 10), "Sim P50 (30d)": np.percentile(sim, 50),
                                           "Sim P90 (30d)": np.percentile(sim, 90)})
                     risk_df = pd.DataFrame(risk_rows).sort_values("Sim P90 (30d)", ascending=False)
-                    st.dataframe(risk_df.round(2), use_container_width=True)
+                    st.dataframe(risk_df.round(2), use_container_width=True, hide_index=True)
 
                 st.subheader("Weibull Reliability - Top 3 Themes")
                 weibull_df = compute_weibull(theme_summary, timeframe_days)
                 if not weibull_df.empty:
-                    st.dataframe(weibull_df.round(2), use_container_width=True)
+                    st.dataframe(weibull_df.round(2), use_container_width=True, hide_index=True)
                     fig = plot_weibull(weibull_df)
                     emit("Predictive Analytics", f"{unit_label}: Weibull Reliability", fig)
                 else:
@@ -2906,7 +2910,7 @@ def render_moulding_line(cfg, dfs_raw, eq_titles, unit_category_data, line_name,
         if len(q) >= 2:
             fig, q_labeled = collision_aware_quadrant(q, f"{line_name}: Maintenance Strategy by Unit", label_col="Unit")
             emit("Maintenance Quadrant", f"{line_name}: Maintenance Strategy by Unit", fig)
-            st.dataframe(q_labeled, use_container_width=True)
+            st.dataframe(q_labeled, use_container_width=True, hide_index=True)
         else:
             st.info("Fewer than 2 units with logged events - not enough for a quadrant chart.")
 
