@@ -13,28 +13,45 @@ The modules are loaded once per server process and behave exactly like the files
 (engine/core.py, engine/configs.py, engine/runner.py, ui/*.py). To change one, edit its text inside SOURCES.
 Optional: a .streamlit/config.toml with [theme.light] / [theme.dark] colours keeps Streamlit's own widgets in step with dark mode.
 """
+import hashlib
 import linecache
 import sys
+import threading
 import types
 
 
 def _load_bundled_modules(sources):
-    for package in ('engine', 'ui'):
-        if package not in sys.modules:
+    """Load the embedded modules once per server process.
+
+    Safe against three things that can leave a half-built or out-of-date copy in memory: two browser sessions loading at the
+    same moment (a lock), a load that failed part way (the partial modules are thrown away), and an edited file reloaded by a
+    server that is still running (each copy is stamped with a fingerprint of this file's sources and replaced if it differs)."""
+    bundle_id = hashlib.sha1(''.join(sources.values()).encode()).hexdigest()
+    with sys.__dict__.setdefault('_downtime_bundle_lock', threading.RLock()):
+        if all(getattr(sys.modules.get(n), '__bundle_ready__', None) == bundle_id for n in sources):
+            return
+        for stale in [n for n in sys.modules if n in sources or n in ('engine', 'ui')]:
+            del sys.modules[stale]
+        for package in ('engine', 'ui'):
             module = types.ModuleType(package)
             module.__path__ = []
             sys.modules[package] = module
-    for name, source in sources.items():
-        if name in sys.modules:
-            continue
-        package = name.split('.')[0]
-        module = types.ModuleType(name)
-        module.__package__ = package
-        module.__file__ = f'<bundled {name}>'
-        sys.modules[name] = module
-        setattr(sys.modules[package], name.split('.')[1], module)
-        linecache.cache[module.__file__] = (len(source), None, source.splitlines(True), module.__file__)
-        exec(compile(source, module.__file__, 'exec'), module.__dict__)
+        try:
+            for name, source in sources.items():
+                package = name.split('.')[0]
+                module = types.ModuleType(name)
+                module.__package__ = package
+                module.__file__ = f'<bundled {name}>'
+                sys.modules[name] = module
+                setattr(sys.modules[package], name.split('.')[1], module)
+                linecache.cache[module.__file__] = (len(source), None, source.splitlines(True), module.__file__)
+                exec(compile(source, module.__file__, 'exec'), module.__dict__)
+        except BaseException:
+            for stale in [n for n in sys.modules if n in sources or n in ('engine', 'ui')]:
+                del sys.modules[stale]
+            raise
+        for name in sources:
+            sys.modules[name].__bundle_ready__ = bundle_id
 
 
 THEME_CONFIG = """[server]
