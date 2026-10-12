@@ -115,7 +115,7 @@ import tempfile  # noqa: E402
 
 class _Capture:
     def __init__(self):
-        self.tables, self.figures, self.step, self.keep_figures = [], [], '', True
+        self.tables, self.figures, self.step, self.keep_figures, self.dpi = [], [], '', True, 110
 
     def reset(self):
         self.tables, self.figures, self.step = [], [], ''
@@ -3961,7 +3961,7 @@ def _show(*_args, **_kwargs):
         for number in plt.get_fignums():
             fig = plt.figure(number)
             buffer = _io.BytesIO()
-            fig.savefig(buffer, format='png', dpi=110, bbox_inches='tight')
+            fig.savefig(buffer, format='png', dpi=CAPTURE.dpi, bbox_inches='tight')
             CAPTURE.figures.append({'step': CAPTURE.step, 'title': _figure_title(fig), 'png': buffer.getvalue()})
     plt.close('all')
 
@@ -5390,6 +5390,43 @@ def available_months(line_key, file_bytes):
         return []
 
 
+def weibull_figures(analysis):
+    """The notebook's own Weibull graphs for a finished analysis: {'units': [png, ...], 'attributed': [png, ...], 'compare': png or None}.
+    Drawn once (a few seconds) and kept on the analysis. Axes show hours with the day equivalent underneath, as in the notebook."""
+    cached = getattr(analysis, 'weibull_figs', None)
+    if cached is not None:
+        return cached
+    out = {'units': [], 'attributed': [], 'compare': None, 'unit_names': []}
+    with _LOCK:
+        apply_options(analysis.options)
+        L = copy.deepcopy(analysis.L)
+        core.CAPTURE.reset()
+        core.CAPTURE.keep_figures = True
+        core.CAPTURE.dpi = 140
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                core.report_weibull(L)
+            figures = list(core.CAPTURE.figures)
+        except Exception:
+            figures = list(core.CAPTURE.figures)
+        finally:
+            core.CAPTURE.reset()
+            core.CAPTURE.keep_figures = False
+            core.CAPTURE.dpi = 110
+    for fig in figures:
+        title = fig.get('title') or ''
+        if 'OWN LOG' in title:
+            out['units'].append(fig['png'])
+            out['unit_names'].append(title.split(' OWN LOG')[0])
+        elif 'median run per unit' in title:
+            out['compare'] = fig['png']
+        else:
+            out['attributed'].append(fig['png'])
+    analysis.weibull_figs = out
+    return out
+
+
 def make_charts(analysis):
     """Draw the report images for a finished analysis (about 15 to 20 s). Used only when a PDF is requested; the result is kept on the analysis."""
     if analysis.figures:
@@ -5546,9 +5583,9 @@ section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div { ba
 section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] svg { color: var(--orange); }
 
 /* ---------- logo above the header ---------- */
-.dc-logo { display: flex; align-items: center; margin: 0 0 14px; }
-.dc-logo img { display: block; height: 40px; width: auto; max-width: 220px; object-fit: contain; }
-@media (prefers-color-scheme: dark) { .dc-logo img { background: #fff; padding: 6px 10px; border-radius: 10px; height: 52px; } }
+.dc-logo { display: flex; align-items: center; margin: 0 0 18px; }
+.dc-logo img { display: block; height: 76px; width: auto; max-width: 340px; object-fit: contain; }
+@media (prefers-color-scheme: dark) { .dc-logo img { background: #fff; padding: 8px 12px; border-radius: 10px; height: 76px; box-sizing: content-box; } }
 
 /* ---------- header bar, pills, cards (names follow the old design_system) ---------- */
 .dc-header { display: flex; align-items: center; justify-content: space-between; padding: 2px 0 18px; flex-wrap: wrap; gap: 14px; }
@@ -5997,6 +6034,16 @@ def _wrap(text, width=34):
 
 
 # ---------------------------------------------------------------------------------------------- overview
+def _days_text(h):
+    d = h / 24
+    return f'{d:,.0f} d' if abs(d) >= 10 else f'{d:,.1f} d' if abs(d) >= 1 or d == 0 else f'{d:,.2f} d'
+
+
+def _hd(h):
+    """'1,355 h (56 d)': hours with the day equivalent, one day = 24 hours (the notebook's wording)."""
+    return f'{h:,.0f} h ({_days_text(h)})'
+
+
 def _hours_label(h):
     if h < 1:
         return f'{h * 60:.0f} min'
@@ -6012,7 +6059,7 @@ def bridge_bars(bridge, mode):
     hours = [abs(float(h)) for h in bridge['Hours']]
     totals = [str(n).startswith('=') or str(n).startswith('Calendar') for n in bridge['Where the hours go']]
     fig = go.Figure(go.Bar(y=names, x=hours, orientation='h', marker_color=[p['main'] if t else p['pale'] for t in totals],
-                           text=[f'{h:,.0f} h' for h in hours], textposition='outside', textfont=dict(color=p['ink'], size=12), cliponaxis=False,
+                           text=[_hd(h) for h in hours], textposition='outside', textfont=dict(color=p['ink'], size=12), cliponaxis=False,
                            hovertemplate='%{y}<br>%{x:,.0f} hours<extra></extra>'))
     fig.update_yaxes(autorange='reversed', showgrid=False)
     fig.update_xaxes(title_text='Hours', range=[0, max(hours) * 1.15])
@@ -6096,7 +6143,7 @@ def pareto_bars(pareto, mode, top=12):
     colors = [p['third'] if w else p['main'] for w in d['waiting']]
     fig = go.Figure(go.Bar(
         y=d['Reason'], x=d['hours'], orientation='h', marker_color=colors, showlegend=False, name='Reasons',
-        text=[f'{h:,.0f} h' for h in d['hours']], textposition='outside',
+        text=[_hd(h) for h in d['hours']], textposition='outside',
         textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
         customdata=np.stack([d['events'], d['source']], axis=1),
         hovertemplate='%{y}<br>%{x:,.1f} h, %{customdata[0]:,.0f} events<br>blamed on: %{customdata[1]}<extra></extra>'))
@@ -6169,24 +6216,6 @@ def run_length_bars(table, short, mode):
     return _base(fig, mode, height=max(280, 42 * len(d) + 100), legend=False, margin=dict(l=8, r=30, t=10, b=8))
 
 
-def weibull_lines(curves, mode):
-    """Weibull curve per unit: chance a unit is still running after a given number of running hours.
-    `curves` is a list of (name, colour, c, beta)."""
-    p = PAL[mode]
-    top = max(float(((-np.log(0.05)) / c) ** (1 / b)) for _, _, c, b in curves)
-    low = 0.05
-    t = np.logspace(np.log10(low), np.log10(max(top, 1.0)), 220)
-    fig = go.Figure()
-    for name, colour, c, b in curves:
-        fig.add_trace(go.Scatter(x=t, y=np.exp(-c * t ** b) * 100, mode='lines', name=name, line=dict(color=colour, width=2.4, shape='spline'),
-                                 hoverinfo='skip'))
-    fig.add_hline(y=50, line=dict(color=p['grey'], width=1, dash='dot'))
-    ticks = [v for v in (0.1, 1, 10, 100, 1000, 10000) if low <= v <= max(top, 1.0) * 1.5]
-    fig.update_xaxes(type='log', title_text='Hours of running since the last stop (log scale)', tickvals=ticks, ticktext=[f'{v:,g}' for v in ticks])
-    fig.update_yaxes(title_text='Chance still running (%)', range=[0, 102], ticksuffix='%')
-    return _base(fig, mode, height=420, margin=dict(l=8, r=18, t=18, b=8))
-
-
 # ---------------------------------------------------------------------------------------------- strategy and attribution
 def attribution_bars(attribution, mode):
     """Hours of Roaster comments by the unit or source they blame."""
@@ -6194,7 +6223,7 @@ def attribution_bars(attribution, mode):
     d = attribution.sort_values('Total_Duration_hours').copy()
     fig = go.Figure(go.Bar(
         y=d['Allocated_To'], x=d['Total_Duration_hours'], orientation='h', marker_color=p['brand'], name='Hours',
-        text=[f'{h:,.0f} h  |  {s:.0f}%' for h, s in zip(d['Total_Duration_hours'], d['Pct_of_Total'])], textposition='outside',
+        text=[f'{_hd(h)}  |  {s:.0f}%' for h, s in zip(d['Total_Duration_hours'], d['Pct_of_Total'])], textposition='outside',
         textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
         customdata=np.stack([d['Total_Count'], d['Avg_Mins_per_Event']], axis=1),
         hovertemplate='%{y}<br>%{x:,.1f} h, %{customdata[0]:,.0f} events<br>average %{customdata[1]:.1f} min per event<extra></extra>'))
@@ -6659,7 +6688,10 @@ def render_predictive(a, mode):
     rows = [w.summary for w in all_w.values() if w.curves is not None and w.running > 0]
     if rows:
         table = pd.DataFrame(rows)
-        chart(charts.run_length_bars(table, short, mode), f'wb_units_{a.line_key}')
+        with st.spinner('Drawing the Weibull graphs'):
+            figs = runner.weibull_figures(a)
+        if figs.get('compare'):
+            st.image(figs['compare'], width='stretch')
         shown = pd.DataFrame({
             'Unit': table['Unit'].map(lambda u: short.get(u, u)),
             'Stops counted': table['Own stops'].round(0),
@@ -6667,13 +6699,11 @@ def render_predictive(a, mode):
             'Likely range': [f'{fmt_hours(lo)} to {fmt_hours(hi)}' for lo, hi in zip(table['Median After low (h)'], table['Median After high (h)'])],
         })
         show(shown)
-        beta = float(a.options['weibull_beta'])
-        curves = [(short.get(u, u), L.colors.get(u, '#8c6d46'), w.curves['After'], beta)
-                  for u, w in all_w.items() if w.curves is not None and w.running > 0 and np.isfinite(w.curves['After']) and w.curves['After'] > 0]
-        if curves:
-            h2('Weibull curve')
-            chart(charts.weibull_lines(curves, mode), f'wb_curve_{a.line_key}')
-            st.caption('Each unit\'s typical run comes from its own running hours and stop count. Only the curve shape is fixed (1.5).')
+        if figs.get('units'):
+            h2('Weibull graph')
+            for png in figs['units'] + figs.get('attributed', []):
+                st.image(png, width='stretch')
+        st.caption('Each unit\'s typical run comes from its own running hours and stop count. Only the curve shape is fixed (1.5). One day is 24 hours.')
         mostly_vague = [short.get(u, u) for u, w in all_w.items() if w.curves is not None and len(w.groups) and _vague_share(w) > 0.5]
         if mostly_vague:
             st.caption('Mostly unclear stops (Unknown, Minor stops), so times are short: ' + ', '.join(mostly_vague) + '.')
