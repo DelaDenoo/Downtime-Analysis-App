@@ -62,6 +62,7 @@ gatherUsageStats = false
 
 [client]
 toolbarMode = "minimal"
+showErrorDetails = "none"
 
 [theme.light]
 primaryColor = "#B9743D"
@@ -6084,17 +6085,53 @@ def availability_bars(units_overall, short, mode):
 
 
 def monthly_lines(units_monthly, unit, mode):
+    """Availability by month as smooth lines."""
     p = PAL[mode]
     d = units_monthly[units_monthly['Unit'] == unit]
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=d['Month'], y=d['Availability (%)'], mode='lines+markers', name='Availability',
-                             line=dict(color=p['main'], width=2.4), marker=dict(size=6),
-                             hovertemplate='%{x}<br>Availability %{y:.1f}%<extra></extra>'))
-    fig.add_trace(go.Scatter(x=d['Month'], y=d['Calendar Availability (%)'], mode='lines+markers', name='Calendar Availability',
-                             line=dict(color=p['alt'], width=2.4), marker=dict(size=6),
-                             hovertemplate='%{x}<br>Calendar Availability %{y:.1f}%<extra></extra>'))
+    fig.add_trace(go.Scatter(x=d['Month'], y=d['Availability (%)'], mode='lines', name='Availability',
+                             line=dict(color=p['main'], width=3, shape='spline', smoothing=1.2), hoverinfo='skip'))
+    fig.add_trace(go.Scatter(x=d['Month'], y=d['Calendar Availability (%)'], mode='lines', name='Calendar Availability',
+                             line=dict(color=p['alt'], width=3, shape='spline', smoothing=1.2), hoverinfo='skip'))
     fig.update_yaxes(ticksuffix='%')
     return _base(fig, mode, height=320)
+
+
+def class_share_bars(class_table, mode):
+    """Share of the downtime that was unplanned or planned, with the hours and the day equivalent."""
+    p = PAL[mode]
+    d = class_table.copy()
+    hours = d['Scaled to window (hrs)'].astype(float).to_numpy()
+    total = hours.sum()
+    if total <= 0:
+        return go.Figure()
+    share = hours / total * 100
+    names = [_wrap(n, 26) for n in d['Counted as']]
+    colours = [p['coral'] if str(n).startswith('Unplanned') else p['grey'] if str(n).startswith('Planned') else p['pale'] for n in d['Counted as']]
+    fig = go.Figure(go.Bar(y=names[::-1], x=share[::-1], orientation='h', marker_color=colours[::-1],
+                           text=[f'{s:.1f}%  |  {_hd(h)}' for s, h in zip(share[::-1], hours[::-1])], textposition='outside',
+                           textfont=dict(color=p['ink'], size=12), cliponaxis=False, hoverinfo='skip'))
+    fig.update_xaxes(title_text='Share of logged downtime (%)', range=[0, 135], tickvals=[0, 25, 50, 75, 100], ticksuffix='%')
+    fig.update_yaxes(type='category', showgrid=False)
+    return _base(fig, mode, height=max(220, 70 * len(d) + 80), legend=False, margin=dict(l=8, r=30, t=10, b=8))
+
+
+def daily_downtime_panels(frames, mode):
+    """Daily downtime hours as recorded, one small panel per unit on a shared date axis."""
+    from plotly.subplots import make_subplots
+    p = PAL[mode]
+    names = list(frames)
+    fig = make_subplots(rows=len(names), cols=1, shared_xaxes=True, vertical_spacing=0.025, subplot_titles=names)
+    for i, name in enumerate(names, start=1):
+        d = frames[name]
+        fig.add_trace(go.Scatter(x=d['Date'], y=d['Duration (hours)'], mode='lines', line=dict(color=p['main'], width=1.4), showlegend=False,
+                                 hoverinfo='skip'), row=i, col=1)
+        fig.update_yaxes(range=[0, 24], tickvals=[0, 12, 24], gridcolor=p['grid'], zeroline=False, tickfont=dict(color=p['ink3'], size=11), row=i, col=1)
+    for ann in fig.layout.annotations:
+        ann.update(x=0, xanchor='left', font=dict(size=12, color=p['ink']))
+    fig.update_xaxes(gridcolor=p['grid'], zeroline=False, tickfont=dict(color=p['ink3'], size=11))
+    fig.update_yaxes(title_text='h', title_font=dict(color=p['ink3'], size=11), row=max(1, len(names) // 2), col=1)
+    return _base(fig, mode, height=150 * len(names) + 40, legend=False, margin=dict(l=8, r=18, t=24, b=8))
 
 
 # ---------------------------------------------------------------------------------------------- causes
@@ -6529,6 +6566,11 @@ def render_integrity(a, mode):
     if len(bridge):
         chart(charts.bridge_bars(bridge, mode), f'bridge_{a.line_key}_{unit}')
 
+    shares = table_for(a, 'class_table', unit)
+    if len(shares):
+        h2('Planned and unplanned downtime')
+        chart(charts.class_share_bars(shares, mode), f'shares_{a.line_key}_{unit}')
+
     overall = table_for(a, 'units_overall')
     if len(overall):
         h2('All units')
@@ -6540,6 +6582,11 @@ def render_integrity(a, mode):
     if len(monthly):
         h2('By month')
         chart(charts.monthly_lines(monthly, unit, mode), f'monthly_{a.line_key}_{unit}')
+
+    frames = {short_of(a).get(u, u): L.dfs[u] for u in L.units if u in L.dfs and len(L.dfs[u])}
+    if frames:
+        h2('Daily downtime, all units')
+        chart(charts.daily_downtime_panels(frames, mode), f'daily_{a.line_key}')
 
     reconcile = next((f for f in L.findings if 'reconcile' in f), None)
     if reconcile and not reconcile.rstrip().endswith('none.'):
@@ -7065,14 +7112,11 @@ def _run(line, data, name, options, holder):
     bar = holder.progress(0.0, text='Starting')
     try:
         analysis = runner.run_line(line, data, name, options, progress=lambda f, label: bar.progress(min(f, 1.0), text=label))
-    except Exception as error:
+    except Exception:
         bar.empty()
         holder.markdown(dc.callout(
-            f'Check that you chose the right line in the sidebar and uploaded that line\'s daily and reason log workbook. '
-            f'Nothing was changed. Fix the choice and press Run Analysis again. The technical detail below is for whoever maintains the app.',
+            f'Check that you chose the right line in the sidebar and uploaded that line\'s workbook, then press Run Analysis again. Nothing was changed.',
             title=f'This does not look like a {line} workbook', tone='warn'), unsafe_allow_html=True)
-        with holder.expander('Technical detail'):
-            st.code(f'{type(error).__name__}: {error}\n\n' + traceback.format_exc())
         return key, None
     bar.empty()
     _remember(key, analysis)
@@ -7194,7 +7238,7 @@ if analysis.options.get('exclude_months'):
     pills += dc_pill(_ICON_WARN, 'Left out: ' + ', '.join(_month_label(m) for m in analysis.options['exclude_months']), 'coral')
 st.markdown(dc_header(APP_NAME, APP_SUB, pills), unsafe_allow_html=True)
 if analysis.errors:
-    st.markdown(dc.callout(f'{len(analysis.errors)} section(s) did not finish: ' + '; '.join(f'{k} ({v})' for k, v in analysis.errors.items()),
+    st.markdown(dc.callout('Some sections could not be completed, so a few charts or tables may be missing: ' + ', '.join(analysis.errors),
                            title='Partial results', tone='warn'), unsafe_allow_html=True)
 
 try:
@@ -7227,10 +7271,8 @@ for name, container in zip(names, containers):
                                    str(abs(hash(current_key))))
             else:
                 renderers[name](analysis, MODE)
-        except Exception as error:
-            st.markdown(dc.callout(f'{type(error).__name__}: {error}', title='This tab could not be drawn', tone='warn'), unsafe_allow_html=True)
-            with st.expander('Technical detail'):
-                st.code(traceback.format_exc())
+        except Exception:
+            st.markdown(dc.callout('Please try again, or press Run Analysis once more.', title='This section could not be shown', tone='warn'), unsafe_allow_html=True)
 
 st.markdown(f'<div class="dc-footer">{APP_NAME} · Barry Callebaut Ghana reliability workspace · analysis runs on your uploaded file for this session only.</div>',
             unsafe_allow_html=True)
