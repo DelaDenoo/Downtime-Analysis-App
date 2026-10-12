@@ -668,6 +668,14 @@ def _cell_text(v):
     return str(v).strip() if v is not None else None
 
 
+def _value_cells(ws, min_row, max_row, max_col):
+    """Cells that hold a value, in reading order. Only cells that exist are visited, so a sheet whose formatting
+    reaches far down or to the right (an empty used range of thousands of rows) is not walked cell by cell."""
+    cells = [c for c in ws._cells.values() if c.value is not None and min_row <= c.row <= max_row and c.column <= max_col]
+    cells.sort(key=lambda c: (c.row, c.column))
+    return cells
+
+
 def _find_category_section_start(ws, max_row, max_col):
     """Finds the row of the 'By Category' marker, if present. This is a
     boundary, not a block anchor in its own right - the real per-unit
@@ -675,11 +683,10 @@ def _find_category_section_start(ws, max_row, max_col):
     below it, each at a different column, not directly next to this
     marker. Returns None if no such marker exists anywhere in the sheet."""
     marker = re.compile(r"by\s*category", re.IGNORECASE)
-    for row in ws.iter_rows(min_row=1, max_row=max_row, max_col=max_col):
-        for cell in row:
-            text = _cell_text(cell.value)
-            if text and marker.search(text):
-                return cell.row
+    for cell in _value_cells(ws, 1, max_row, max_col):
+        text = _cell_text(cell.value)
+        if text and marker.search(text):
+            return cell.row
     return None
 
 
@@ -695,11 +702,10 @@ def _find_anchors(ws, max_row, max_col, min_row=1):
     rather than finding-and-failing them, which is harder to notice."""
     unit_label = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ ]*:\s*.+")
     anchors = []
-    for row in ws.iter_rows(min_row=min_row, max_row=max_row, max_col=max_col):
-        for cell in row:
-            text = _cell_text(cell.value)
-            if text and unit_label.search(text):
-                anchors.append({"row": cell.row, "col": cell.column, "text": text})
+    for cell in _value_cells(ws, min_row, max_row, max_col):
+        text = _cell_text(cell.value)
+        if text and unit_label.search(text):
+            anchors.append({"row": cell.row, "col": cell.column, "text": text})
     return anchors
 
 
@@ -773,6 +779,26 @@ def _find_block_extent(ws, header_row, col_range, other_anchor_rows, max_scan=50
     return header_row + 1, last_data_row
 
 
+_BOOKS = {}
+
+
+def _shared_book(file):
+    """Open the workbook once per load and reuse it, instead of parsing the whole file again for every unit."""
+    book = _BOOKS.get(file)
+    if book is None:
+        book = _BOOKS[file] = openpyxl.load_workbook(file, data_only=True)
+    return book
+
+
+def _close_books():
+    for book in list(_BOOKS.values()):
+        try:
+            book.close()
+        except Exception:
+            pass
+    _BOOKS.clear()
+
+
 def discover_category_blocks(file, sheet=None):
     """Scans the whole workbook once and returns every discovered block,
     keyed by a unique label (anchor text + its row/col, since the same
@@ -791,7 +817,7 @@ def discover_category_blocks(file, sheet=None):
     whether a 'By Category' marker was actually found, which is worth
     surfacing: its absence means the search fell back to scanning the
     whole sheet with nothing to narrow against."""
-    wb = openpyxl.load_workbook(file, data_only=True)
+    wb = _shared_book(file)
     ws = wb[sheet] if sheet else wb.active
     max_row = ws.max_row or 2000
     max_col = ws.max_column or 200
@@ -863,7 +889,6 @@ def discover_category_blocks(file, sheet=None):
                 "data_end_row": data_end,
                 "combined_fields": combined_fields,
             }
-    wb.close()
     meta = {"category_section_row": category_section_row}
     return results, meta
 
@@ -876,7 +901,7 @@ def load_discovered_block(file, block_info, sheet=None):
     real data is fine)."""
     if block_info is None or block_info.get("combined_fields"):
         return None
-    wb = openpyxl.load_workbook(file, data_only=True)
+    wb = _shared_book(file)
     ws = wb[sheet] if sheet else wb.active
     cols = block_info["columns"]
     field_order = ["Category", "Reason", "Ratio", "Duration_hours", "Duration_min", "Count"]
@@ -887,7 +912,6 @@ def load_discovered_block(file, block_info, sheet=None):
         rows_out.append(
             [ws.cell(row=r, column=col_idx[f]).value if col_idx[f] else None for f in field_order]
         )
-    wb.close()
 
     df = pd.DataFrame(
         rows_out, columns=["Category", "Reason", "Ratio", "Duration_hours", "Duration", "Count"]
@@ -1018,6 +1042,8 @@ def load_line(cfg):
                 log_source[unit] = (
                     f'configured columns {cfg["log_cols"][unit]}, skip {cfg["log_skiprows"]} rows'
                 )
+
+    _close_books()
 
     def in_window(daily):
         keep = ~excluded_mask(daily['Date'], cfg)
@@ -5220,6 +5246,7 @@ The engine is the notebook's own code (engine/core.py), so the app and the noteb
 import contextlib
 import copy
 import io
+
 import os
 import tempfile
 import threading
@@ -5227,6 +5254,8 @@ import time
 import traceback
 import warnings
 from types import SimpleNamespace
+
+import pandas as pd
 
 from . import configs, core
 
@@ -5277,8 +5306,10 @@ def apply_options(options):
     core.SHAPE = 1.0 / core.DURATION_CV ** 2
 
 
-def run_line(line_key, file_bytes, file_name='upload.xlsx', options=None, progress=None):
+def run_line(line_key, file_bytes, file_name='upload.xlsx', options=None, progress=None, charts=False):
     """Run every report for one line. `progress(fraction, label)` is called between steps.
+
+    `charts=False` skips drawing the report images (the screen uses its own charts); they are drawn later, only when a PDF is asked for.
 
     Returns SimpleNamespace(L, notes, errors, figures, seconds, options, line_key, file_name)."""
     options = {**DEFAULT_OPTIONS, **(options or {})}
@@ -5294,6 +5325,7 @@ def run_line(line_key, file_bytes, file_name='upload.xlsx', options=None, progre
         cfg['file'] = path
         apply_options(options)
         core.CAPTURE.reset()
+        core.CAPTURE.keep_figures = bool(charts)
         total = len(STEPS)
 
         def tick(index, label):
@@ -5306,7 +5338,10 @@ def run_line(line_key, file_bytes, file_name='upload.xlsx', options=None, progre
         out = io.StringIO()
         with contextlib.redirect_stdout(out), warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            L = core.load_line(cfg)
+            try:
+                L = core.load_line(cfg)
+            finally:
+                core._close_books()
         notes[STEPS[0][0]] = out.getvalue()
         L.file_name = file_name
 
@@ -5327,33 +5362,57 @@ def run_line(line_key, file_bytes, file_name='upload.xlsx', options=None, progre
             progress(1.0, 'Done')
         figures = list(core.CAPTURE.figures)
         core.CAPTURE.reset()
+        core.CAPTURE.keep_figures = False
     return SimpleNamespace(L=L, notes=notes, errors=errors, figures=figures, seconds=time.time() - started,
                            options=options, line_key=line_key, file_name=file_name)
 
 
 def available_months(line_key, file_bytes):
-    """Months ('YYYY-MM') that have rows in the uploaded daily sheets, so any of them can be left out. Empty if the file cannot be read."""
-    cfg = copy.deepcopy(configs.LINES[line_key])
-    cfg['exclude_march'] = False
-    cfg['exclude_months'] = []
+    """Months ('YYYY-MM') that have rows in the uploaded daily sheets, so any of them can be left out.
+    Reads the date columns only (not the reason logs), so it is quick. Empty if the file cannot be read."""
+    cfg = configs.LINES[line_key]
     try:
-        with _LOCK, tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, 'workbook.xlsx')
             with open(path, 'wb') as handle:
                 handle.write(file_bytes)
-            cfg['file'] = path
-            apply_options(DEFAULT_OPTIONS)
-            core.CAPTURE.reset()
+            months = set()
             with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
                 warnings.simplefilter('ignore')
-                L = core.load_line(cfg)
-            core.CAPTURE.reset()
-        months = set()
-        for daily in L.daily_full.values():
-            months |= set(daily['Date'].dropna().dt.strftime('%Y-%m'))
+                with pd.ExcelFile(path) as book:
+                    for spec in cfg['daily'].values():
+                        daily = core.read_daily(book, sheet=cfg.get('sheet') or 0, **spec)
+                        months |= set(daily['Date'].dropna().dt.strftime('%Y-%m'))
+                        if months:
+                            break  # the units share one date column
         return sorted(months)
     except Exception:
         return []
+
+
+def make_charts(analysis):
+    """Draw the report images for a finished analysis (about 15 to 20 s). Used only when a PDF is requested; the result is kept on the analysis."""
+    if analysis.figures:
+        return analysis.figures
+    with _LOCK:
+        apply_options(analysis.options)
+        L = copy.deepcopy(analysis.L)
+        core.CAPTURE.reset()
+        core.CAPTURE.keep_figures = True
+        for label, name in STEPS[1:]:
+            core.CAPTURE.step = label
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+                    warnings.simplefilter('ignore')
+                    getattr(core, name)(L)
+            except Exception:
+                pass  # a chart that cannot be drawn is left out of the PDF
+            finally:
+                core.CAPTURE.tables = []
+        analysis.figures = list(core.CAPTURE.figures)
+        core.CAPTURE.reset()
+        core.CAPTURE.keep_figures = False
+    return analysis.figures
 
 
 def plant_summary(analyses):
@@ -5362,8 +5421,10 @@ def plant_summary(analyses):
     if not lines:
         return None
     with _LOCK, contextlib.redirect_stdout(io.StringIO()):
+        core.CAPTURE.keep_figures = False
         summary = core.compare_lines(lines)
         core.CAPTURE.reset()
+        core.CAPTURE.keep_figures = False
     return summary
 
 
@@ -5515,7 +5576,6 @@ section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] svg { colo
 .dc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 0.4rem 0 0.2rem; }
 .dc-grid .dc-card { margin-bottom: 0; }
 .dc-metric { transition: transform .35s var(--settle), box-shadow .35s var(--settle); }
-.dc-metric:hover { transform: translateY(-2px); }
 .dc-metric-top { display: flex; align-items: center; justify-content: space-between; }
 .dc-metric-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; color: var(--sub-text); text-transform: uppercase; }
 .dc-metric-value { font-size: 2.35rem; font-weight: 780; color: var(--ink); margin: 10px 0 4px; line-height: 1; letter-spacing: -0.032em; font-variant-numeric: tabular-nums; }
@@ -5672,7 +5732,6 @@ div[data-testid="stExpander"] summary { font-weight: 620; color: var(--ink); }
 /* ---------- accessibility ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation: fadein 0.2s ease both !important; }
-  .dc-metric:hover { transform: none; }
   @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 }
 
@@ -5682,7 +5741,6 @@ div[data-testid="stExpander"] summary { font-weight: 620; color: var(--ink); }
 .dc-tbl-wrap .dc-tbl th { position: sticky; top: 0; z-index: 1; background: var(--gray-tint) !important; color: var(--sub-text); font-size: 0.78rem; font-weight: 650; letter-spacing: 0.01em; text-align: left; padding: 11px 16px !important; border: 0 !important; border-bottom: 1px solid var(--border) !important; vertical-align: bottom; }
 .dc-tbl-wrap .dc-tbl td { padding: 10px 16px !important; border: 0 !important; border-bottom: 1px solid var(--rule) !important; background: transparent !important; vertical-align: top; }
 .dc-tbl-wrap .dc-tbl tbody tr:nth-child(even) td { background: var(--zebra) !important; }
-.dc-tbl-wrap .dc-tbl tbody tr:hover td { background: var(--hover) !important; }
 .dc-tbl-wrap .dc-tbl tbody tr:last-child td { border-bottom: 0 !important; }
 .dc-tbl-wrap .dc-tbl th.num, .dc-tbl-wrap .dc-tbl td.num { text-align: right; white-space: nowrap; }
 .dc-tbl-wrap .dc-tbl td.nw { white-space: nowrap; }
@@ -5917,7 +5975,7 @@ def _base(fig, mode, height=380, legend=True, margin=None):
         hoverlabel=dict(bgcolor=p['tip'], font=dict(family=FONT, size=13, color=p['ink']), bordercolor=p['grid']),
         legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0, font=dict(color=p['ink2'], size=12),
                     bgcolor='rgba(0,0,0,0)') if legend else None,
-        showlegend=legend, hovermode='closest', dragmode=False, bargap=0.38,
+        showlegend=legend, hovermode=False, dragmode=False, bargap=0.38,
     )
     fig.update_xaxes(gridcolor=p['grid'], zeroline=False, linecolor=p['grid'], tickfont=dict(color=p['ink3'], size=12),
                      title_font=dict(color=p['ink3'], size=12), automargin=True)
@@ -6111,6 +6169,24 @@ def run_length_bars(table, short, mode):
     return _base(fig, mode, height=max(280, 42 * len(d) + 100), legend=False, margin=dict(l=8, r=30, t=10, b=8))
 
 
+def weibull_lines(curves, mode):
+    """Weibull curve per unit: chance a unit is still running after a given number of running hours.
+    `curves` is a list of (name, colour, c, beta)."""
+    p = PAL[mode]
+    top = max(float(((-np.log(0.05)) / c) ** (1 / b)) for _, _, c, b in curves)
+    low = 0.05
+    t = np.logspace(np.log10(low), np.log10(max(top, 1.0)), 220)
+    fig = go.Figure()
+    for name, colour, c, b in curves:
+        fig.add_trace(go.Scatter(x=t, y=np.exp(-c * t ** b) * 100, mode='lines', name=name, line=dict(color=colour, width=2.4, shape='spline'),
+                                 hoverinfo='skip'))
+    fig.add_hline(y=50, line=dict(color=p['grey'], width=1, dash='dot'))
+    ticks = [v for v in (0.1, 1, 10, 100, 1000, 10000) if low <= v <= max(top, 1.0) * 1.5]
+    fig.update_xaxes(type='log', title_text='Hours of running since the last stop (log scale)', tickvals=ticks, ticktext=[f'{v:,g}' for v in ticks])
+    fig.update_yaxes(title_text='Chance still running (%)', range=[0, 102], ticksuffix='%')
+    return _base(fig, mode, height=420, margin=dict(l=8, r=18, t=18, b=8))
+
+
 # ---------------------------------------------------------------------------------------------- strategy and attribution
 def attribution_bars(attribution, mode):
     """Hours of Roaster comments by the unit or source they blame."""
@@ -6282,6 +6358,7 @@ Raw Logs                   -> Raw Logs
 Predictive Analytics       -> Predictive Analytics (forecast, forecast check, time between stops)
 Report Export              -> Report Export (Excel and PDF)
 """
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -6590,6 +6667,13 @@ def render_predictive(a, mode):
             'Likely range': [f'{fmt_hours(lo)} to {fmt_hours(hi)}' for lo, hi in zip(table['Median After low (h)'], table['Median After high (h)'])],
         })
         show(shown)
+        beta = float(a.options['weibull_beta'])
+        curves = [(short.get(u, u), L.colors.get(u, '#8c6d46'), w.curves['After'], beta)
+                  for u, w in all_w.items() if w.curves is not None and w.running > 0 and np.isfinite(w.curves['After']) and w.curves['After'] > 0]
+        if curves:
+            h2('Weibull curve')
+            chart(charts.weibull_lines(curves, mode), f'wb_curve_{a.line_key}')
+            st.caption('Each unit\'s typical run comes from its own running hours and stop count. Only the curve shape is fixed (1.5).')
         mostly_vague = [short.get(u, u) for u, w in all_w.items() if w.curves is not None and len(w.groups) and _vague_share(w) > 0.5]
         if mostly_vague:
             st.caption('Mostly unclear stops (Unknown, Minor stops), so times are short: ' + ', '.join(mostly_vague) + '.')
@@ -6795,6 +6879,8 @@ class Report(FPDF):
 
 
 def pdf_bytes(analysis, plant=None):
+    from engine import runner
+    runner.make_charts(analysis)
     L, opts = analysis.L, analysis.options
     pdf = Report(f'{L.name}: availability and downtime report')
     pdf.add_page()
