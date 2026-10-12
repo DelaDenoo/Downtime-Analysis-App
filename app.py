@@ -140,7 +140,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import openpyxl
 import pandas as pd
-from IPython.display import display
 from matplotlib.ticker import FuncFormatter
 from openpyxl.utils import column_index_from_string, get_column_letter
 from scipy import stats
