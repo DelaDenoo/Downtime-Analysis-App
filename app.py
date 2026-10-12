@@ -5425,7 +5425,7 @@ TOK = {
         'green': '#2F8F63', 'green_tint': '#D9F0E1', 'coral': '#B76552', 'coral_tint': '#F2DFD7', 'gray_tint': '#EFEAE0',
         'chrome': 'rgba(251,246,236,0.74)', 'side': 'rgba(246,238,224,0.80)',
         'shadow': '0 1px 2px rgba(60,40,10,0.05), 0 8px 24px rgba(60,40,10,0.06)',
-        'on_accent': '#FFFFFF',
+        'on_accent': '#FFFFFF', 'zebra': '#FCF9F3', 'hover': '#F8EEDD', 'rule': '#F0E9DA',
     },
     'dark': {
         'bg': '#17130E', 'card': '#221C15', 'border': '#3A3226', 'ink': '#F4ECDD', 'sub': '#A89B84', 'sub_text': '#BDB19A',
@@ -5433,7 +5433,7 @@ TOK = {
         'green': '#4FBF8B', 'green_tint': '#1E3329', 'coral': '#D98A76', 'coral_tint': '#3A2620', 'gray_tint': '#2D261D',
         'chrome': 'rgba(23,19,14,0.74)', 'side': 'rgba(28,23,17,0.82)',
         'shadow': '0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.45)',
-        'on_accent': '#FFFFFF',
+        'on_accent': '#FFFFFF', 'zebra': '#261F18', 'hover': '#30261B', 'rule': '#2F281D',
     },
 }
 
@@ -5483,6 +5483,11 @@ section[data-testid="stSidebar"] > div { padding-top: 0.6rem; }
 [data-testid="stSidebarUserContent"] { padding: 1.2rem 1.1rem 2rem; }
 section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div { background: var(--card); border: 1px solid var(--border); border-radius: 12px; font-weight: 600; color: var(--ink); }
 section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] svg { color: var(--orange); }
+
+/* ---------- logo above the header ---------- */
+.dc-logo { display: flex; align-items: center; margin: 0 0 14px; }
+.dc-logo img { display: block; height: 40px; width: auto; max-width: 220px; object-fit: contain; }
+@media (prefers-color-scheme: dark) { .dc-logo img { background: #fff; padding: 6px 10px; border-radius: 10px; height: 52px; } }
 
 /* ---------- header bar, pills, cards (names follow the old design_system) ---------- */
 .dc-header { display: flex; align-items: center; justify-content: space-between; padding: 2px 0 18px; flex-wrap: wrap; gap: 14px; }
@@ -5670,6 +5675,28 @@ div[data-testid="stExpander"] summary { font-weight: 620; color: var(--ink); }
   .dc-metric:hover { transform: none; }
   @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 }
+
+/* ---------- tables ---------- */
+.dc-tbl-wrap { border: 1px solid var(--border); border-radius: 14px; overflow: auto; background: var(--card); margin: 0.35rem 0 1rem; box-shadow: var(--shadow); -webkit-overflow-scrolling: touch; }
+.dc-tbl-wrap .dc-tbl { width: 100%; border-collapse: separate !important; border-spacing: 0; margin: 0 !important; font-size: 0.86rem; line-height: 1.4; color: var(--ink); font-variant-numeric: tabular-nums; }
+.dc-tbl-wrap .dc-tbl th { position: sticky; top: 0; z-index: 1; background: var(--gray-tint) !important; color: var(--sub-text); font-size: 0.78rem; font-weight: 650; letter-spacing: 0.01em; text-align: left; padding: 11px 16px !important; border: 0 !important; border-bottom: 1px solid var(--border) !important; vertical-align: bottom; }
+.dc-tbl-wrap .dc-tbl td { padding: 10px 16px !important; border: 0 !important; border-bottom: 1px solid var(--rule) !important; background: transparent !important; vertical-align: top; }
+.dc-tbl-wrap .dc-tbl tbody tr:nth-child(even) td { background: var(--zebra) !important; }
+.dc-tbl-wrap .dc-tbl tbody tr:hover td { background: var(--hover) !important; }
+.dc-tbl-wrap .dc-tbl tbody tr:last-child td { border-bottom: 0 !important; }
+.dc-tbl-wrap .dc-tbl th.num, .dc-tbl-wrap .dc-tbl td.num { text-align: right; white-space: nowrap; }
+.dc-tbl-wrap .dc-tbl td.nw { white-space: nowrap; }
+.dc-tbl-wrap .dc-tbl td.lead { font-weight: 600; }
+.dc-tbl-wrap .dc-tbl tr.key td { font-weight: 650; }
+.dc-tbl-na { color: var(--sub); }
+.dc-tbl-empty { color: var(--sub-text); font-size: 0.9rem; padding: 6px 2px; }
+.dc-tbl-note { color: var(--sub-text); font-size: 0.8rem; margin: -0.4rem 0 1rem; }
+.dc-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; line-height: 1.5; }
+.dc-badge-gray { background: var(--gray-tint); color: var(--sub-text); }
+.dc-badge-green { background: var(--green-tint); color: var(--green); }
+.dc-badge-coral { background: var(--coral-tint); color: var(--coral); }
+@media print { .dc-tbl-wrap { max-height: none !important; overflow: visible; box-shadow: none; break-inside: auto; } .dc-tbl-wrap .dc-tbl th { position: static; } }
+@media (max-width: 640px) { .dc-tbl-wrap .dc-tbl th, .dc-tbl-wrap .dc-tbl td { padding: 9px 12px !important; } }
 @media (prefers-reduced-transparency: reduce) {
   header[data-testid="stHeader"], section[data-testid="stSidebar"] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card) !important; }
   header[data-testid="stHeader"]::after { display: none; }
@@ -6115,6 +6142,132 @@ def improvement_bars(improvement, mode, top=10):
     return _base(fig, mode, height=max(280, 40 * len(d) + 100), legend=False, margin=dict(l=8, r=30, t=10, b=8))
 ''',
 # ====================================================================================================
+# module ui.table
+# ====================================================================================================
+'ui.table': r'''"""Tables for the app: clean headers, right-aligned numbers, status badges, sticky header, light and dark.
+Returns one line of HTML (no Streamlit calls). Every cell value is escaped."""
+import html
+import re
+
+import numpy as np
+import pandas as pd
+
+# Plain headers for the engine's column names. Anything not listed gets underscores turned into spaces and (hrs) into (h).
+RENAME = {
+    'Allocated_To': 'Blamed on',
+    'Total_Duration_hours': 'Total hours',
+    'Total_Count': 'Events',
+    'Pct_of_Total': 'Share of total (%)',
+    'Avg_Mins_per_Event': 'Avg minutes per event',
+    'Duration_hours': 'Hours',
+    'Window hrs': 'Window (h)',
+    'Count': 'Events',
+}
+
+BADGES = {  # value (lower case) -> tone
+    'within range': 'gray', 'better': 'green', 'worse': 'coral',
+    'unplanned loss': 'coral', 'planned non-production': 'gray', 'left out of the calculation': 'gray', 'planned maintenance': 'gray',
+}
+BADGE_COLUMNS = {'verdict', 'result'}
+MAX_ROWS = 500
+
+
+def clean_header(name):
+    name = str(name)
+    if name in RENAME:
+        return RENAME[name]
+    name = name.replace('_', ' ')
+    name = re.sub(r'\(hrs\)', '(h)', name)
+    name = re.sub(r'\bhrs\b', 'h', name)
+    return name
+
+
+def _is_number(series):
+    return pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
+
+
+def _fmt_number(value, header, integer):
+    if value is None or (isinstance(value, float) and not np.isfinite(value)):
+        return None
+    if integer:
+        return f'{int(round(value)):,}'
+    text = f'{value:,.1f}'
+    if text in ('-0.0', '0.0') and value != 0 and abs(value) < 0.05:
+        text = f'{value:,.2f}'
+    signed = ('(pp)' in header and ('change' in header.lower() or 'gain' in header.lower()))
+    if signed and value > 0:
+        text = '+' + text
+    return text
+
+
+def html_table(df, max_rows=MAX_ROWS, max_height=440, empty='Nothing to show.'):
+    """Return (html, shown_rows, total_rows)."""
+    if df is None or len(df) == 0:
+        return f'<div class="dc-tbl-empty">{html.escape(empty)}</div>', 0, 0
+    total = len(df)
+    d = df.head(max_rows)
+    headers = [clean_header(c) for c in d.columns]
+    kinds = []
+    for col in d.columns:
+        s = d[col]
+        if _is_number(s):
+            kinds.append(('int' if pd.api.types.is_integer_dtype(s) else 'num', False))
+        elif pd.api.types.is_bool_dtype(s):
+            kinds.append(('bool', False))
+        elif pd.api.types.is_datetime64_any_dtype(s):
+            kinds.append(('date', False))
+        else:
+            kinds.append(('text', False))
+
+    head = ''.join(
+        f'<th class="{"num" if k in ("int", "num") else ""}">{html.escape(h)}</th>' for h, (k, _) in zip(headers, kinds))
+
+    rows = []
+    for _, row in d.iterrows():
+        first = row.iloc[0]
+        key = isinstance(first, str) and first.strip().lower() == 'base'
+        cells = []
+        for i, (col, h, (kind, integer)) in enumerate(zip(d.columns, headers, kinds)):
+            v = row[col]
+            cls = []
+            if kind in ('int', 'num'):
+                text = _fmt_number(v, h, kind == 'int')
+                cls.append('num')
+            elif kind == 'bool':
+                text = None if pd.isna(v) else ('Yes' if bool(v) else 'No')
+                cls.append('flag')
+            elif kind == 'date':
+                text = None if pd.isna(v) else pd.Timestamp(v).strftime('%Y-%m-%d' if pd.Timestamp(v).time() == pd.Timestamp(0).time() else '%Y-%m-%d %H:%M')
+                cls.append('nw')
+            else:
+                if v is None or (isinstance(v, float) and np.isnan(v)) or (v is pd.NA):
+                    text = None
+                else:
+                    text = str(v)
+                    if text.strip() == '':
+                        text = None
+                    elif len(text) <= 22 and re.fullmatch(r'[\d\-: /.]+', text.strip()):
+                        cls.append('nw')  # dates and times kept as text stay on one line
+            if text is None:
+                inner = '<span class="dc-tbl-na">&ndash;</span>'
+            elif h.strip().lower() in BADGE_COLUMNS or (kind == 'text' and text.strip().lower() in BADGES and h.strip().lower() in ('counted as', 'class')):
+                tone = BADGES.get(text.strip().lower(), 'gray')
+                inner = f'<span class="dc-badge dc-badge-{tone}">{html.escape(text)}</span>'
+            elif kind == 'bool' and text == 'Yes':
+                inner = '<span class="dc-badge dc-badge-gray">Yes</span>'
+            else:
+                inner = html.escape(text)
+            if i == 0 and kind == 'text':
+                cls.append('lead')
+            cells.append(f'<td class="{" ".join(cls)}">{inner}</td>')
+        rows.append(f'<tr class="{"key" if key else ""}">{"".join(cells)}</tr>')
+
+    style = f' style="max-height:{max_height}px"' if max_height else ''
+    out = (f'<div class="dc-tbl-wrap"{style}><table class="dc-tbl"><thead><tr>{head}</tr></thead>'
+           f'<tbody>{"".join(rows)}</tbody></table></div>')
+    return out, len(d), total
+''',
+# ====================================================================================================
 # module ui.tabs
 # ====================================================================================================
 'ui.tabs': r'''"""The tabs, in the old dashboard's order and names, filled from the new notebook engine. Plain charts, short text, no settings.
@@ -6133,7 +6286,7 @@ import pandas as pd
 import streamlit as st
 
 from engine import runner
-from . import charts, guide
+from . import charts, guide, table
 from .dc import (_ICON_BAR_CHART, _ICON_CLOCK, _ICON_GAUGE, callout, dc_metric_card, esc, findings_list, fmt_hours, fmt_pct, metric_grid, note_card)
 
 
@@ -6154,16 +6307,12 @@ def h2(text):
     st.markdown(f'## {text}')
 
 
-def show(df, height='auto', index=False):
-    """Table, numbers rounded to one decimal."""
-    if df is None or len(df) == 0:
-        st.caption('Nothing to show.')
-        return
-    d = df.copy()
-    for col in d.columns:
-        if pd.api.types.is_float_dtype(d[col]):
-            d[col] = d[col].round(1)
-    st.dataframe(d, hide_index=not index, width='stretch', height=height)
+def show(df, height=440, index=False, max_rows=500):
+    """Styled table: clean headers, aligned numbers, sticky header. Long tables scroll."""
+    html_, shown, total = table.html_table(df, max_rows=max_rows, max_height=height if isinstance(height, int) else 440)
+    md(html_)
+    if total > shown:
+        md(f'<div class="dc-tbl-note">Showing the first {shown:,} of {total:,} rows. Download the CSV for all of them.</div>')
 
 
 def chart(fig, key):
@@ -6395,7 +6544,7 @@ def render_raw(a, mode):
     if query.strip():
         d = d[d['Reason'].astype(str).str.contains(query.strip(), case=False, regex=False)]
     st.caption(f'{len(d):,} of {len(log):,} rows, {d["Duration_hours"].sum():,.1f} h')
-    show(d.sort_values('Duration_hours', ascending=False), height=420)
+    show(d.sort_values('Duration_hours', ascending=False), height=460, max_rows=300)
     st.download_button('Download CSV', d.to_csv(index=False).encode('utf-8'), file_name=f'{L.tag}_{short.get(unit, unit)}_reasons.csv',
                        mime='text/csv', key=f'raw_dl_{a.line_key}_{unit}')
 
@@ -6740,10 +6889,29 @@ MAX_STORED = 8
 EAGER = bool(os.environ.get('DOWNTIME_APP_EAGER'))  # test hook: build every tab on every run
 
 
+@st.cache_data(show_spinner=False)
+def _logo_html():
+    """The logo as a small image above the header. Looks for logo.png (or .jpg, .svg) next to the app or in the working folder.
+    A missing or unreadable logo is skipped, never an error."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for folder in (os.getcwd(), here):
+        for name in ('logo.png', 'logo.jpg', 'logo.jpeg', 'logo.svg', 'logo.webp'):
+            path = os.path.join(folder, name)
+            if os.path.isfile(path):
+                try:
+                    import base64
+                    mime = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'svg': 'image/svg+xml', 'webp': 'image/webp'}[name.rsplit('.', 1)[1]]
+                    data = base64.b64encode(open(path, 'rb').read()).decode()
+                    return f'<div class="dc-logo"><img alt="Barry Callebaut" src="data:{mime};base64,{data}"></div>'
+                except Exception:
+                    return ''
+    return ''
+
+
 def show_logo_if_present():
-    """A missing logo must never crash the page, so it is skipped silently."""
-    if os.path.exists(LOGO):
-        st.image(LOGO, width='stretch')
+    html_ = _logo_html()
+    if html_:
+        st.markdown(html_, unsafe_allow_html=True)
 
 
 @st.cache_data(show_spinner=False, max_entries=16)
@@ -6860,6 +7028,7 @@ run_clicked = st.sidebar.button(button_label, type='primary', width='stretch', d
 st.sidebar.markdown(f'<div class="dc-state dc-state-{state[0]}"><span class="dc-state-dot"></span><span>{dc.esc(state[1])}</span></div>', unsafe_allow_html=True)
 
 # ------------------------------------------------------------------------------ run gate: analysis starts on an explicit click
+show_logo_if_present()
 holder = st.container()
 if run_clicked and upload is not None:
     data = upload.getvalue()
@@ -6875,7 +7044,6 @@ if current_key and analysis is None:
     st.session_state.runs.pop(line, None)  # fell out of the store
 
 if analysis is None:
-    show_logo_if_present()
     holder.markdown(dc_header(APP_NAME, APP_SUB, dc_pill(_ICON_BRANCH, line, 'orange')), unsafe_allow_html=True)
     holder.markdown(guide.welcome_html(line, upload.name if upload is not None else None), unsafe_allow_html=True)
     st.stop()
@@ -6901,7 +7069,6 @@ with st.sidebar:
                     f'<div class="dc-unit-row"><div><div class="dc-unit-name">{dc.esc(L.short.get(row["Unit"], row["Unit"]))}</div>'
                     f'<div class="dc-unit-loc">{_ICON_PIN}<span>{dc.esc(where)}</span></div></div>{pill}</div>', unsafe_allow_html=True)
 
-show_logo_if_present()
 head_unit = L.headline[0]
 head = L.metrics[head_unit]
 dates = L.dfs[head_unit]['Date']
