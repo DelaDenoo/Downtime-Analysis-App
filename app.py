@@ -959,6 +959,18 @@ def check_config(cfg):
         ), 'use (?: ) in attribution patterns'
 
 
+def excluded_mask(dates, cfg):
+    """True for dates in an excluded month. cfg['exclude_months'] holds 'YYYY-MM' strings; the notebooks' March switch still works."""
+    dates = pd.Series(pd.to_datetime(pd.Series(dates).to_numpy()))
+    mask = pd.Series(False, index=dates.index)
+    if cfg.get('exclude_march'):
+        mask |= dates.between(cfg['march_start'], cfg['march_end'])
+    months = cfg.get('exclude_months') or ()
+    if len(months):
+        mask |= dates.dt.strftime('%Y-%m').isin(list(months))
+    return mask.to_numpy()
+
+
 def load_line(cfg):
     """Read one line's workbook and return the objects every report below works from."""
     check_config(cfg)
@@ -1008,11 +1020,8 @@ def load_line(cfg):
                 )
 
     def in_window(daily):
-        if not cfg.get('exclude_march'):
-            return daily
-        return daily[~daily['Date'].between(cfg['march_start'], cfg['march_end'])].reset_index(
-            drop=True
-        )
+        keep = ~excluded_mask(daily['Date'], cfg)
+        return daily[keep].reset_index(drop=True)
 
     unit_libs, shared_first = build_theme_setup(cfg, rules)
     short = {unit: cfg.get('short', {}).get(unit, short_name(unit)) for unit in units}
@@ -1054,10 +1063,8 @@ def unexplained_missing_days(L, window):
     """Calendar days inside the window's span with no row, other than an excluded month."""
     span = pd.date_range(window['Date'].min().normalize(), window['Date'].max().normalize())
     missing = span.difference(pd.DatetimeIndex(window['Date'].dt.normalize()))
-    if L.cfg.get('exclude_march'):
-        inside = missing.to_series().between(L.cfg['march_start'], L.cfg['march_end']).to_numpy()
-        missing = missing[~inside]
-    return missing
+    inside = excluded_mask(missing.to_series(), L.cfg)
+    return missing[~inside]
 
 
 def log_summary(L):
@@ -5228,7 +5235,7 @@ _LOCK = threading.Lock()  # the engine keeps its settings in module globals, so 
 # Settings the app lets the user change. Everything else keeps the notebook's value.
 DEFAULT_OPTIONS = {
     'planned_maintenance': 'exclude_from_calculation',  # or 'planned_stop'
-    'exclude_march': False,
+    'exclude_months': (),  # 'YYYY-MM' strings to leave out
     'forecast_days': 30,
     'backtest_days': 30,
     'weibull_beta': 1.5,
@@ -5252,9 +5259,9 @@ STEPS = [
     ('Reasons behind each theme', 'report_theme_reasons'),
     ('Roaster comments against each unit\'s own log', 'report_own_vs_attributed'),
     ('Same themes, own log against comments', 'report_theme_comparison'),
-    ('Monte Carlo forecast', 'report_forecast'),
+    ('Forecast', 'report_forecast'),
     ('Backtest', 'report_backtest'),
-    ('Time between stops (Weibull)', 'report_weibull'),
+    ('Time between stops', 'report_weibull'),
     ('Findings', 'line_findings'),
 ]
 
@@ -5276,7 +5283,8 @@ def run_line(line_key, file_bytes, file_name='upload.xlsx', options=None, progre
     Returns SimpleNamespace(L, notes, errors, figures, seconds, options, line_key, file_name)."""
     options = {**DEFAULT_OPTIONS, **(options or {})}
     cfg = copy.deepcopy(configs.LINES[line_key])
-    cfg['exclude_march'] = bool(options['exclude_march'])
+    cfg['exclude_march'] = False
+    cfg['exclude_months'] = sorted(options.get('exclude_months') or ())
     notes, errors = {}, {}
     started = time.time()
     with _LOCK, tempfile.TemporaryDirectory() as folder:
@@ -5321,6 +5329,31 @@ def run_line(line_key, file_bytes, file_name='upload.xlsx', options=None, progre
         core.CAPTURE.reset()
     return SimpleNamespace(L=L, notes=notes, errors=errors, figures=figures, seconds=time.time() - started,
                            options=options, line_key=line_key, file_name=file_name)
+
+
+def available_months(line_key, file_bytes):
+    """Months ('YYYY-MM') that have rows in the uploaded daily sheets, so any of them can be left out. Empty if the file cannot be read."""
+    cfg = copy.deepcopy(configs.LINES[line_key])
+    cfg['exclude_march'] = False
+    cfg['exclude_months'] = []
+    try:
+        with _LOCK, tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'workbook.xlsx')
+            with open(path, 'wb') as handle:
+                handle.write(file_bytes)
+            cfg['file'] = path
+            apply_options(DEFAULT_OPTIONS)
+            core.CAPTURE.reset()
+            with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                L = core.load_line(cfg)
+            core.CAPTURE.reset()
+        months = set()
+        for daily in L.daily_full.values():
+            months |= set(daily['Date'].dropna().dt.strftime('%Y-%m'))
+        return sorted(months)
+    except Exception:
+        return []
 
 
 def plant_summary(analyses):
@@ -5777,118 +5810,56 @@ def spacer(px):
 # ====================================================================================================
 # module ui.guide
 # ====================================================================================================
-'ui.guide': r'''"""Words and small HTML pieces that help people who do not live in the data: the start-here screen, the plain-language
-glance, one-line tab introductions and the glossary. Everything here is plain text or HTML; no Streamlit calls."""
-from .dc import _ICON_BOLT, _ICON_GAUGE, _ICON_TARGET, _ICON_UPLOAD, _ICON_ALARM, _ICON_SCALE, esc
-
-# What each tab is for, in one or two sentences.
-TAB_HELP = {
-    'Availability & Integrity': 'Start here. How much of the planned time each unit actually ran, where the hours went, and whether the workbook was read correctly.',
-    'Roaster Attribution': 'Some Roaster stops are blamed on other units in the comments. This tab shows which units get the blame and how many hours that adds up to.',
-    'Strategy & Improvement': 'Use this to decide where to act first. It shows how many points of Availability you would gain if a group of stops disappeared.',
-    'Theme Breakdown': 'How much of each log explains why a unit stopped, and how much is vague. Vague entries (Unknown, Minor stops) are the first thing to fix in how reasons are logged.',
-    'Own Reason Logs': 'The biggest reasons each unit logged for itself, ranked by hours. Pick a unit to see its top causes.',
-    'Raw Logs': 'Every reason row from the workbook and how the app counted it. Search or filter, then download the rows as a CSV file.',
-    'Predictive Analytics': 'What to expect next: a forecast of unplanned hours, a check of how that forecast would have done on recent days, and how long a unit usually runs between stops.',
-    'Report Export': 'Download everything as an Excel workbook, or build a PDF report you can share.',
-}
-
-GLOSSARY = [
-    ('Availability', 'Of the hours a unit was meant to be producing, the share it actually ran. 93% means about 93 of every 100 planned hours.'),
-    ('Calendar Availability', 'The same running time measured against every hour on the calendar. It is lower than Availability because planned stops count against it.'),
-    ('Utilization', 'How much of the calendar was booked for production, as opposed to planned time when the unit was not meant to produce.'),
-    ('Planned, unplanned, waiting', 'Planned stops were scheduled (for example maintenance). Unplanned stops were not scheduled. Waiting means the unit was held up by another unit or by missing material. '
-                                    'The app decides this only from the wording of each reason.'),
-    ('Vague reason', 'Unknown, Minor stops or Not clearly identified. They say the unit stopped but not why, so nothing can be fixed from them yet. The app never guesses a cause for them.'),
-    ('Availability gain (points)', 'How many percentage points Availability would rise if that group of stops disappeared completely.'),
-    ('Forecast: P10, P50, P90', 'The app replays the past thousands of times with random variation. P50 is the middle result. P10 is a good case (only 1 period in 10 had fewer unplanned hours). '
-                                'P90 is a bad case (only 1 in 10 had more).'),
-    ('Backtest', 'A sanity check. The forecast is run on recent days that already happened, to see whether reality landed inside the range. It is not proof.'),
-    ('Time between stops', 'How long a unit usually runs before an unplanned stop. The shape of the curve is an assumption, because the logs do not record the time of each single stop.'),
-]
+'ui.guide': r'''"""Start-here screen and the short summary above the tabs. Plain text and HTML only; no Streamlit calls."""
+from .dc import _ICON_ALARM, _ICON_BOLT, _ICON_GAUGE, _ICON_SCALE, _ICON_TARGET, esc
 
 
-def glossary_html():
-    rows = ''.join(f'<div class="dc-gloss-term">{esc(t)}</div><div class="dc-gloss-def">{esc(d)}</div>' for t, d in GLOSSARY)
-    return f'<div class="dc-gloss">{rows}</div>'
-
-
-def intro_html(tab):
-    text = TAB_HELP.get(tab)
-    if not text:
-        return ''
-    return f'<div class="dc-intro"><span class="dc-intro-dot"></span><span>{esc(text)}</span></div>'
-
-
-# ---------------------------------------------------------------------------------------------- start-here screen
-def welcome_html(line, units, upload_name):
-    """Three numbered steps. The state of each follows what the person has done so far."""
+def welcome_html(line, upload_name):
+    """Three steps that tick off as the person goes."""
     has_file = upload_name is not None
     states = ['done', 'done' if has_file else 'active', 'active' if has_file else 'todo']
     steps = [
-        ('1', 'Choose the line', f'You are on <b>{esc(line)}</b>. Change it in the sidebar if you need another line.'),
-        ('2', 'Add its downtime workbook',
-         f'<b>{esc(upload_name)}</b> is ready.' if has_file else 'Drag the Excel file into the sidebar box, or press Browse. It is only used for this session.'),
-        ('3', 'Press Run Analysis', 'Takes about 15 seconds. The results appear on this page.' if has_file else 'It switches on once a file is added.'),
+        ('1', 'Choose the line', f'<b>{esc(line)}</b>'),
+        ('2', 'Add the workbook', f'<b>{esc(upload_name)}</b>' if has_file else 'Drag the Excel file into the sidebar.'),
+        ('3', 'Run Analysis', 'Press the button in the sidebar.' if has_file else 'Available once a file is added.'),
     ]
     cards = ''.join(
         f'<div class="dc-onboard dc-onboard-{s}"><div class="dc-onboard-n">{"&#10003;" if s == "done" else n}</div>'
         f'<div><div class="dc-onboard-title">{esc(title)}</div><div class="dc-onboard-text">{text}</div></div></div>'
         for (n, title, text), s in zip(steps, states))
-    names = ', '.join(esc(u) for u in units)
-    need = (f'<div class="dc-card dc-need"><div class="dc-card-title">What file does {esc(line)} need?</div>'
-            f'<p class="dc-note" style="margin:6px 0 0">The same daily downtime and reason log workbook as before, with these units: {names}. '
-            f'If the app cannot find a unit\'s reasons it says which one, so nothing is silently skipped.</p></div>')
-    return (f'<div class="dc-welcome"><div class="dc-welcome-title">Start here</div>'
-            f'<p class="dc-welcome-sub">Three steps to see how a line performed, where the hours went and what to expect next. '
-            f'On a phone or small tablet, open the sidebar with the arrow at the top left.</p>'
-            f'<div class="dc-onboard-row">{cards}</div>{need}</div>')
+    return f'<div class="dc-welcome"><div class="dc-welcome-title">Start here</div><div class="dc-onboard-row">{cards}</div></div>'
 
 
-# ---------------------------------------------------------------------------------------------- the glance
-def _pp(x):
-    return f'{x:.1f} points'
-
-
-def glance_cards(unit_name, days, availability, top_loss, top_clear, forecast, clear_share, vague_names):
-    """Four plain answers. Each is (icon, question, answer, explanation, where_to_look)."""
-    cards = []
-    cards.append((_ICON_GAUGE, 'How did it run?', f'{availability:.1f}%',
-                  f'About {availability:.0f} of every 100 planned hours, over {days} days.', 'Availability & Integrity'))
+def glance_cards(days, availability, top_loss, top_clear, forecast, clear_share, vague_names):
+    """Short answers: (icon, label, value, line)."""
+    cards = [(_ICON_GAUGE, 'Availability', f'{availability:.1f}%', f'{days} days')]
     if top_loss is not None:
-        name, hours, gain = top_loss
-        vague = name in vague_names
-        extra = ' This means the reason was not recorded clearly.' if vague else ''
-        cards.append((_ICON_SCALE, 'Where were the most hours lost?', name,
-                      f'{hours:,.0f} h of unplanned time. Fixing it is worth up to {_pp(gain)} of Availability.{extra}', 'Strategy & Improvement'))
-    if top_clear is not None and top_clear[0] != (top_loss or [None])[0]:
-        name, hours, gain = top_clear
-        cards.append((_ICON_BOLT, 'Biggest cause we can name', name,
-                      f'{hours:,.0f} h. Fixing it is worth up to {_pp(gain)} of Availability.', 'Strategy & Improvement'))
+        name, hours = top_loss
+        cards.append((_ICON_SCALE, 'Most hours lost', name, f'{hours:,.0f} h' + (', reason not clear' if name.lower() in vague_names else '')))
+    if top_clear is not None and (top_loss is None or top_clear[0] != top_loss[0]):
+        name, hours = top_clear
+        cards.append((_ICON_BOLT, 'Biggest named cause', name, f'{hours:,.0f} h'))
     if forecast is not None:
         lo, mid, hi, fdays = forecast
-        cards.append((_ICON_ALARM, f'What to expect, next {fdays} days', f'{lo:.1f} to {hi:.1f}%',
-                      f'Most likely about {mid:.1f}%. Only 1 period in 10 was below the first number or above the second.', 'Predictive Analytics'))
+        cards.append((_ICON_ALARM, f'Next {fdays} days', f'{lo:.1f} to {hi:.1f}%', f'most likely {mid:.1f}%'))
     if clear_share is not None:
-        cards.append((_ICON_TARGET, 'How much is explained?', f'{clear_share:.0f}%',
-                      'of logged downtime has a clear reason. The rest is vague (Unknown, Minor stops), so it cannot be acted on yet.', 'Theme Breakdown'))
+        cards.append((_ICON_TARGET, 'Clear reasons', f'{clear_share:.0f}%', 'of logged downtime'))
     return cards
 
 
-def glance_html(unit_name, cards, window_text):
+def glance_html(unit_name, cards):
     items = ''.join(
         f'<div class="dc-glance-item"><div class="dc-glance-q"><span class="dc-glance-ic">{icon}</span>{esc(q)}</div>'
-        f'<div class="dc-glance-a">{esc(a)}</div><div class="dc-glance-x">{esc(x)}</div>'
-        f'<div class="dc-glance-go">See the {esc(tab)} tab</div></div>'
-        for icon, q, a, x, tab in cards)
-    return (f'<div class="dc-glance"><div class="dc-glance-head"><span class="dc-glance-title">At a glance</span>'
-            f'<span class="dc-glance-for">{esc(unit_name)}{" · " + esc(window_text) if window_text else ""}</span></div>'
+        f'<div class="dc-glance-a">{esc(a)}</div><div class="dc-glance-x">{esc(x)}</div></div>'
+        for icon, q, a, x in cards)
+    return (f'<div class="dc-glance"><div class="dc-glance-head"><span class="dc-glance-title">Summary</span>'
+            f'<span class="dc-glance-for">{esc(unit_name)}</span></div>'
             f'<div class="dc-glance-grid dc-glance-n{len(cards)}">{items}</div></div>')
 ''',
 # ====================================================================================================
 # module ui.charts
 # ====================================================================================================
-'ui.charts': r'''"""Interactive Plotly charts. Every function takes plain data plus `mode` ('light' or 'dark') and returns a figure.
+'ui.charts': r'''"""Plain Plotly charts: bars and lines only. Every function takes plain data plus `mode` ('light' or 'dark') and returns a figure.
 
 Colour rules (dataviz): text is always ink, never the series colour; a legend is always shown for two or more series;
 no dual axes; categories keep a fixed order. The three chromatic slots below passed the palette validator in both modes
@@ -5902,9 +5873,9 @@ PAL = {
     # light: the old dashboard's cream palette. The three data colours (orange-brown, blue, green) passed the palette validator
     # together; the brand orange #B9743D is kept for single-series accents and the interface.
     'light': dict(ink='#2A241C', ink2='#6F6554', ink3='#8F8471', grid='rgba(60,40,10,0.08)', brand='#B9743D', main='#9C5F2E', alt='#3E6FB0',
-                  third='#2F8F63', grey='#8F8471', pale='#D9CFBD', paper='rgba(0,0,0,0)', tip='#FFFFFF', band='rgba(156,95,46,0.18)'),
+                  third='#2F8F63', coral='#B76552', grey='#8F8471', pale='#D9CFBD', paper='rgba(0,0,0,0)', tip='#FFFFFF', band='rgba(156,95,46,0.18)'),
     'dark': dict(ink='#F4ECDD', ink2='#BDB19A', ink3='#A89B84', grid='rgba(244,236,221,0.10)', brand='#C97B3F', main='#C97B3F', alt='#4F86CC',
-                 third='#3FA877', grey='#A89B84', pale='#4A4032', paper='rgba(0,0,0,0)', tip='#2D261D', band='rgba(201,123,63,0.28)'),
+                 third='#3FA877', coral='#D98A76', grey='#A89B84', pale='#4A4032', paper='rgba(0,0,0,0)', tip='#2D261D', band='rgba(201,123,63,0.28)'),
 }
 FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif'
 CONFIG = {'displayModeBar': False, 'responsive': True, 'scrollZoom': False}
@@ -5915,12 +5886,11 @@ def _base(fig, mode, height=380, legend=True, margin=None):
     fig.update_layout(
         height=height, paper_bgcolor=p['paper'], plot_bgcolor=p['paper'],
         font=dict(family=FONT, size=13, color=p['ink2']),
-        margin=margin or dict(l=8, r=18, t=18, b=8),
+        margin={**(margin or dict(l=8, r=18, t=18, b=8)), **({'t': max((margin or {}).get('t', 18), 38)} if legend else {})},
         hoverlabel=dict(bgcolor=p['tip'], font=dict(family=FONT, size=13, color=p['ink']), bordercolor=p['grid']),
-        legend=dict(orientation='h', yanchor='top', y=-0.3, xanchor='left', x=0, font=dict(color=p['ink2'], size=12),
+        legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0, font=dict(color=p['ink2'], size=12),
                     bgcolor='rgba(0,0,0,0)') if legend else None,
         showlegend=legend, hovermode='closest', dragmode=False, bargap=0.38,
-        transition=dict(duration=350, easing='cubic-in-out'),
     )
     fig.update_xaxes(gridcolor=p['grid'], zeroline=False, linecolor=p['grid'], tickfont=dict(color=p['ink3'], size=12),
                      title_font=dict(color=p['ink3'], size=12), automargin=True)
@@ -5942,54 +5912,43 @@ def _wrap(text, width=34):
 
 
 # ---------------------------------------------------------------------------------------------- overview
-def bridge_waterfall(bridge, mode):
-    """Calendar time down to running time. `bridge` has 'Where the hours go' and 'Hours'."""
+def _hours_label(h):
+    if h < 1:
+        return f'{h * 60:.0f} min'
+    if h < 48:
+        return f'{h:.1f} h'
+    return f'{h / 24:.1f} d'
+
+
+def bridge_bars(bridge, mode):
+    """Calendar time down to running time as ordinary bars. `bridge` has 'Where the hours go' and 'Hours'."""
     p = PAL[mode]
-    labels, values, measures = [], [], []
-    for name, hours in zip(bridge['Where the hours go'], bridge['Hours']):
-        clean = str(name).lstrip('= ').strip()
-        if str(name).startswith('Calendar'):
-            measures.append('absolute')
-        elif str(name).startswith('='):
-            measures.append('total')
-        else:
-            measures.append('relative')
-        labels.append(_wrap(clean, 30))
-        values.append(float(hours))
-    fig = go.Figure(go.Waterfall(
-        orientation='h', y=labels, x=values, measure=measures,
-        text=[f'{abs(v):,.0f} h' for v in values], textposition='outside', textfont=dict(color=p['ink'], size=12),
-        connector=dict(line=dict(color=p['grid'], width=1)),
-        increasing=dict(marker=dict(color=p['main'])), decreasing=dict(marker=dict(color=p['alt'])),
-        totals=dict(marker=dict(color=p['main'])),
-        hovertemplate='%{y}<br>%{x:,.0f} hours<extra></extra>',
-    ))
+    names = [_wrap(str(n).lstrip('= ').strip(), 28) for n in bridge['Where the hours go']]
+    hours = [abs(float(h)) for h in bridge['Hours']]
+    totals = [str(n).startswith('=') or str(n).startswith('Calendar') for n in bridge['Where the hours go']]
+    fig = go.Figure(go.Bar(y=names, x=hours, orientation='h', marker_color=[p['main'] if t else p['pale'] for t in totals],
+                           text=[f'{h:,.0f} h' for h in hours], textposition='outside', textfont=dict(color=p['ink'], size=12), cliponaxis=False,
+                           hovertemplate='%{y}<br>%{x:,.0f} hours<extra></extra>'))
     fig.update_yaxes(autorange='reversed', showgrid=False)
-    fig.update_xaxes(title_text='Hours', range=[0, max(abs(v) for v in values if True) * 1.18 if values else 1])
-    return _base(fig, mode, height=64 * len(labels) + 70, legend=False, margin=dict(l=8, r=60, t=10, b=30))
+    fig.update_xaxes(title_text='Hours', range=[0, max(hours) * 1.15])
+    return _base(fig, mode, height=44 * len(names) + 70, legend=False, margin=dict(l=8, r=30, t=10, b=30))
 
 
-def availability_dots(units_overall, short, mode):
-    """Availability and Calendar Availability per unit (dots, so the axis can start near the data)."""
+def availability_bars(units_overall, short, mode):
+    """Availability and Calendar Availability per unit, side by side."""
     p = PAL[mode]
     d = units_overall.copy()
     d['name'] = d['Unit'].map(lambda u: short.get(u, u))
-    d = d.sort_values('Availability (%)')
-    lo = float(min(d['Availability (%)'].min(), d['Calendar Availability (%)'].min()))
+    d = d.iloc[::-1]
     fig = go.Figure()
-    for _, r in d.iterrows():
-        fig.add_shape(type='line', y0=r['name'], y1=r['name'], x0=r['Calendar Availability (%)'], x1=r['Availability (%)'],
-                      line=dict(color=p['pale'], width=3), layer='below')
-    fig.add_trace(go.Scatter(x=d['Calendar Availability (%)'], y=d['name'], mode='markers', name='Calendar Availability (against the time base)',
-                             marker=dict(color=p['alt'], size=11, line=dict(color=p['paper'] if False else p['tip'], width=1.5)),
-                             hovertemplate='%{y}<br>Calendar Availability %{x:.1f}%<extra></extra>'))
-    fig.add_trace(go.Scatter(x=d['Availability (%)'], y=d['name'], mode='markers+text', name='Availability (against planned production time)',
-                             marker=dict(color=p['main'], size=13, line=dict(color=p['tip'], width=1.5)),
-                             text=[f'{v:.1f}%' for v in d['Availability (%)']], textposition='middle right', textfont=dict(color=p['ink'], size=12),
-                             hovertemplate='%{y}<br>Availability %{x:.1f}%<extra></extra>'))
-    fig.update_xaxes(range=[max(0, lo - 4), min(101, d['Availability (%)'].max() + 5)], ticksuffix='%')
-    fig.update_yaxes(type='category', categoryorder='array', categoryarray=list(d['name']), showgrid=True)
-    return _base(fig, mode, height=max(300, 44 * len(d) + 120), margin=dict(l=8, r=40, t=10, b=8))
+    for col, name, color in (('Calendar Availability (%)', 'Calendar Availability', p['alt']), ('Availability (%)', 'Availability', p['main'])):
+        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker_color=color, text=[f'{v:.1f}%' for v in d[col]],
+                             textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
+                             hovertemplate='%{y}<br>' + name + ' %{x:.1f}%<extra></extra>'))
+    fig.update_layout(barmode='group', legend=dict(traceorder='reversed'))
+    fig.update_xaxes(range=[0, 112], ticksuffix='%')
+    fig.update_yaxes(type='category', showgrid=False)
+    return _base(fig, mode, height=max(280, 52 * len(d) + 110), margin=dict(l=8, r=30, t=10, b=8))
 
 
 def monthly_lines(units_monthly, unit, mode):
@@ -5997,13 +5956,13 @@ def monthly_lines(units_monthly, unit, mode):
     d = units_monthly[units_monthly['Unit'] == unit]
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=d['Month'], y=d['Availability (%)'], mode='lines+markers', name='Availability',
-                             line=dict(color=p['main'], width=2.6, shape='spline', smoothing=0.5), marker=dict(size=7),
+                             line=dict(color=p['main'], width=2.4), marker=dict(size=6),
                              hovertemplate='%{x}<br>Availability %{y:.1f}%<extra></extra>'))
     fig.add_trace(go.Scatter(x=d['Month'], y=d['Calendar Availability (%)'], mode='lines+markers', name='Calendar Availability',
-                             line=dict(color=p['alt'], width=2.2, dash='dot', shape='spline', smoothing=0.5), marker=dict(size=6),
+                             line=dict(color=p['alt'], width=2.4), marker=dict(size=6),
                              hovertemplate='%{x}<br>Calendar Availability %{y:.1f}%<extra></extra>'))
     fig.update_yaxes(ticksuffix='%')
-    return _base(fig, mode, height=340)
+    return _base(fig, mode, height=320)
 
 
 # ---------------------------------------------------------------------------------------------- causes
@@ -6052,15 +6011,13 @@ def pareto_bars(pareto, mode, top=12):
     colors = [p['third'] if w else p['main'] for w in d['waiting']]
     fig = go.Figure(go.Bar(
         y=d['Reason'], x=d['hours'], orientation='h', marker_color=colors, showlegend=False, name='Reasons',
-        text=[f'{h:,.0f} h  |  {c:.0f}% cumulative' for h, c in zip(d['hours'], d['cumulative_pct'])], textposition='outside',
+        text=[f'{h:,.0f} h' for h in d['hours']], textposition='outside',
         textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
         customdata=np.stack([d['events'], d['source']], axis=1),
         hovertemplate='%{y}<br>%{x:,.1f} h, %{customdata[0]:,.0f} events<br>blamed on: %{customdata[1]}<extra></extra>'))
-    fig.add_trace(go.Bar(y=[None], x=[None], orientation='h', name='Waiting', marker_color=p['third']))
-    fig.add_trace(go.Bar(y=[None], x=[None], orientation='h', name='Stops and other unplanned', marker_color=p['main']))
     fig.update_yaxes(tickmode='array', tickvals=list(d['Reason']), ticktext=[_wrap(t, 32) for t in d['Reason']], showgrid=False)
-    fig.update_xaxes(title_text='Hours', range=[0, d['hours'].max() * 1.45])
-    return _base(fig, mode, height=max(320, 40 * len(d) + 120), margin=dict(l=8, r=30, t=10, b=8))
+    fig.update_xaxes(title_text='Hours', range=[0, d['hours'].max() * 1.2])
+    return _base(fig, mode, height=max(320, 40 * len(d) + 120), legend=False, margin=dict(l=8, r=30, t=10, b=8))
 
 
 def two_views_bars(two_views, mode):
@@ -6078,183 +6035,53 @@ def two_views_bars(two_views, mode):
     return _base(fig, mode, height=max(300, 56 * len(d) + 110))
 
 
-# ---------------------------------------------------------------------------------------------- forecast
-def forecast_hist(own, wait, days, mode):
-    """Spread of unplanned hours over the forecast window, with P10 / P50 / P90 marked."""
+# ---------------------------------------------------------------------------------------------- forecast, backtest, time between stops
+def forecast_bars(forecast_units, short, mode):
+    """Unplanned hours expected over the forecast period: good case, most likely, bad case, per unit."""
     p = PAL[mode]
-    total = np.asarray(own) + np.asarray(wait)
-    p10, p50, p90 = np.percentile(total, [10, 50, 90])
-    fig = go.Figure(go.Histogram(x=total, nbinsx=48, marker=dict(color=p['main'], line=dict(color=p['tip'], width=0.5)), opacity=0.9,
-                                 hovertemplate='%{x:.0f} h: %{y} of the simulated runs<extra></extra>', name='Simulated runs'))
-    top = 1.0
-    for value, name, dash in ((p10, 'P10', 'dot'), (p50, 'P50', 'solid'), (p90, 'P90', 'dot')):
-        fig.add_vline(x=value, line=dict(color=p['ink'], width=1.4, dash=dash))
-        fig.add_annotation(x=value, y=top, yref='paper', text=f'{name}  {value:,.0f} h', showarrow=False, yanchor='bottom',
-                           font=dict(color=p['ink'], size=12), bgcolor='rgba(0,0,0,0)')
-    fig.update_xaxes(title_text=f'Unplanned hours in the next {days} days (waiting included)')
-    fig.update_yaxes(title_text='Simulated runs', showticklabels=False)
-    return _base(fig, mode, height=330, legend=False, margin=dict(l=8, r=18, t=34, b=8))
-
-
-def scenario_ranges(headline_forecast, unit, mode):
-    """Availability P10 to P90 range with the P50 dot, one row per planned-time scenario."""
-    p = PAL[mode]
-    d = headline_forecast[headline_forecast['Unit'] == unit]
+    d = forecast_units.copy()
+    d['name'] = d['Unit'].map(lambda u: short.get(u, u))
+    d = d.iloc[::-1]
     fig = go.Figure()
-    order = list(d['Scenario'])[::-1]
-    for _, r in d.iterrows():
-        fig.add_shape(type='line', y0=r['Scenario'], y1=r['Scenario'], x0=r['Availability P10 (%)'], x1=r['Availability P90 (%)'],
-                      line=dict(color=p['pale'], width=10), layer='below')
-    fig.add_trace(go.Scatter(x=d['Availability P50 (%)'], y=d['Scenario'], mode='markers+text', name='Most likely (P50)',
-                             marker=dict(color=p['main'], size=15, line=dict(color=p['tip'], width=2)),
-                             text=[f'{v:.1f}%' for v in d['Availability P50 (%)']], textposition='top center', textfont=dict(color=p['ink'], size=12),
-                             customdata=np.stack([d['Availability P10 (%)'], d['Availability P90 (%)']], axis=1),
-                             hovertemplate='%{y}<br>P50 %{x:.1f}%<br>P10 %{customdata[0]:.1f}% to P90 %{customdata[1]:.1f}%<extra></extra>'))
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode='lines', name='P10 to P90 range', line=dict(color=p['pale'], width=10)))
-    fig.update_yaxes(type='category', categoryorder='array', categoryarray=order, showgrid=False)
-    lo, hi = float(d['Availability P10 (%)'].min()), float(d['Availability P90 (%)'].max())
-    fig.update_xaxes(range=[lo - 2, min(101, hi + 2)], ticksuffix='%')
-    return _base(fig, mode, height=270, margin=dict(l=8, r=18, t=44, b=8))
+    for col, name, color in (('Unplanned hrs P90', 'Bad case', p['coral']), ('Unplanned hrs P50', 'Most likely', p['main']), ('Unplanned hrs P10', 'Good case', p['third'])):
+        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker_color=color, text=[f'{v:,.0f}' for v in d[col]],
+                             textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
+                             hovertemplate='%{y}<br>' + name + ' %{x:,.0f} h<extra></extra>'))
+    fig.update_layout(barmode='group', legend=dict(traceorder='reversed'))
+    fig.update_xaxes(title_text='Unplanned hours', range=[0, float(d['Unplanned hrs P90'].max()) * 1.15])
+    fig.update_yaxes(type='category', showgrid=False)
+    return _base(fig, mode, height=max(300, 74 * len(d) + 110), margin=dict(l=8, r=30, t=10, b=8))
 
 
-def backtest_ratio(backtest, short, mode):
-    """Held-back days: actual hours against the forecast range, each unit scaled so its P50 forecast is 1."""
+def backtest_bars(backtest, short, mode):
+    """Last days held back: forecast (most likely) against what actually happened, in unplanned hours."""
     p = PAL[mode]
     d = backtest.copy()
     d['name'] = d['Unit'].map(lambda u: short.get(u, u))
     d = d.iloc[::-1]
-    p50 = d['Forecast P50'].replace(0, np.nan)
     fig = go.Figure()
-    for _, r in d.iterrows():
-        fig.add_shape(type='line', y0=r['name'], y1=r['name'], x0=r['Forecast P10'] / r['Forecast P50'], x1=r['Forecast P90'] / r['Forecast P50'],
-                      line=dict(color=p['pale'], width=10), layer='below')
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode='lines', name='Forecast range (P10 to P90)', line=dict(color=p['pale'], width=10)))
-    fig.add_trace(go.Scatter(x=[1] * len(d), y=d['name'], mode='markers', name='Forecast P50', marker=dict(color=p['ink3'], size=8, symbol='line-ns-open', line=dict(width=2))))
-    within = d['Verdict'].astype(str).str.contains('Within|Better')
-    ratio = d['Actual (scaled, hrs)'] / p50
-    fig.add_trace(go.Scatter(
-        x=ratio, y=d['name'], mode='markers+text', name='What actually happened',
-        marker=dict(color=np.where(within, p['third'], p['main']), size=14, symbol='diamond', line=dict(color=p['tip'], width=1.5)),
-        text=d['Verdict'], textposition='middle right', textfont=dict(color=p['ink'], size=12),
-        customdata=np.stack([d['Actual (scaled, hrs)'], d['Forecast P10'], d['Forecast P50'], d['Forecast P90']], axis=1),
-        hovertemplate='%{y}<br>Actual %{customdata[0]:,.0f} h<br>Forecast P10 %{customdata[1]:,.0f}, P50 %{customdata[2]:,.0f}, P90 %{customdata[3]:,.0f} h<extra></extra>'))
-    fig.update_xaxes(title_text='Actual hours as a multiple of the forecast P50 (1.0 = exactly as forecast)', rangemode='tozero')
-    fig.update_yaxes(type='category', categoryorder='array', categoryarray=list(d['name']), showgrid=False)
-    return _base(fig, mode, height=max(300, 48 * len(d) + 130), margin=dict(l=8, r=80, t=10, b=8))
+    for col, name, color in (('Actual (scaled, hrs)', 'Actual', p['alt']), ('Forecast P50', 'Forecast', p['main'])):
+        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker_color=color, text=[f'{v:,.0f}' for v in d[col]],
+                             textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
+                             hovertemplate='%{y}<br>' + name + ' %{x:,.0f} h<extra></extra>'))
+    fig.update_layout(barmode='group', legend=dict(traceorder='reversed'))
+    fig.update_xaxes(title_text='Unplanned hours', range=[0, float(max(d['Actual (scaled, hrs)'].max(), d['Forecast P50'].max())) * 1.2])
+    fig.update_yaxes(type='category', showgrid=False)
+    return _base(fig, mode, height=max(300, 64 * len(d) + 110), margin=dict(l=8, r=30, t=10, b=8))
 
 
-# ---------------------------------------------------------------------------------------------- weibull
-def time_scale(tmax_hours):
-    """(divisor, unit name) so the axis reads naturally: minutes under 3 h, hours under 3 days, days beyond."""
-    if tmax_hours < 3:
-        return 1 / 60.0, 'minutes'
-    if tmax_hours < 72:
-        return 1.0, 'hours'
-    return 24.0, 'days'
-
-
-def _surv(t, c, beta):
-    return np.exp(-c * np.asarray(t, dtype=float) ** beta) * 100
-
-
-def curve_limit(coefs, beta, level=0.04):
-    finite = [(-np.log(level) / c) ** (1 / beta) for c in coefs if c is not None and np.isfinite(c) and c > 0]
-    return max(finite) * 1.03 if finite else 100.0
-
-
-def _survival_axes(fig, unit_name):
-    fig.update_yaxes(range=[0, 104], ticksuffix='%', title_text='Chance of still running without the stop')
-    fig.update_xaxes(title_text=f'Continuous running time since restart ({unit_name})')
-    fig.add_hline(y=50, line=dict(color='rgba(142,142,147,0.7)', width=1, dash='dot'))
-
-
-def unit_survival(W, mode, mark_hours=None, tmax=None):
-    """Whole-unit curve: every counted stop together. Before / planned removed / after, with the counting-uncertainty band."""
-    p = PAL[mode]
-    c, beta = W.curves, W.beta
-    tmax = tmax or curve_limit([c['Before'], c['Planned removed'], c['After'], c['low'], c['high']], beta)
-    div, unit_name = time_scale(tmax)
-    t = np.linspace(0, tmax, 360)
-    x = t / div
-    fig = go.Figure()
-    upper, lower = _surv(t, c['low'], beta), _surv(t, c['high'], beta)
-    fig.add_trace(go.Scatter(x=x, y=upper, mode='lines', line=dict(width=0), hoverinfo='skip', showlegend=False))
-    fig.add_trace(go.Scatter(x=x, y=lower, mode='lines', line=dict(width=0), fill='tonexty', fillcolor=p['band'],
-                             name='Likely range (10th to 90th percentile)', hoverinfo='skip'))
-    fig.add_trace(go.Scatter(x=x, y=_surv(t, c['Before'], beta), mode='lines', name='Before: planned time still counted as running',
-                             line=dict(color=p['grey'], width=2, dash='dash'),
-                             hovertemplate='Before<br>%{y:.0f}% still running at %{x:.1f} ' + unit_name + '<extra></extra>'))
-    if W.planned > 0.5:
-        fig.add_trace(go.Scatter(x=x, y=_surv(t, c['Planned removed'], beta), mode='lines', name='Planned time taken out',
-                                 line=dict(color=p['third'], width=2, dash='dot'),
-                                 hovertemplate='Planned removed<br>%{y:.0f}% still running at %{x:.1f} ' + unit_name + '<extra></extra>'))
-    fig.add_trace(go.Scatter(x=x, y=_surv(t, c['After'], beta), mode='lines', name='After: running time only',
-                             line=dict(color=p['main'], width=3.2),
-                             hovertemplate='After<br>%{y:.0f}% still running at %{x:.1f} ' + unit_name + '<extra></extra>'))
-    _survival_axes(fig, unit_name)
-    if mark_hours is not None and 0 < mark_hours <= tmax:
-        s = float(_surv(mark_hours, c['After'], beta))
-        fig.add_vline(x=mark_hours / div, line=dict(color=p['ink'], width=1.3))
-        fig.add_trace(go.Scatter(x=[mark_hours / div], y=[s], mode='markers+text', showlegend=False, text=[f'{s:.0f}%'], textposition='top right',
-                                 textfont=dict(color=p['ink'], size=14), marker=dict(color=p['main'], size=13, line=dict(color=p['tip'], width=2.5)),
-                                 hoverinfo='skip'))
-    return _base(fig, mode, height=410, margin=dict(l=8, r=18, t=14, b=8)), unit_name
-
-
-def cause_survival(W, groups, mode, tmax=None):
-    """The biggest identified causes, each on its own colour: solid = After, thin dashed = Before."""
-    p = PAL[mode]
-    colors = [p['main'], p['alt'], p['third']]
-    beta = W.beta
-    cs = [g['c After'] for _, g in groups.iterrows()] + [g['c Before'] for _, g in groups.iterrows()]
-    tmax = tmax or curve_limit(cs, beta)
-    div, unit_name = time_scale(tmax)
-    t = np.linspace(0, tmax, 320)
-    fig = go.Figure()
-    for color, (_, g) in zip(colors, groups.iterrows()):
-        fig.add_trace(go.Scatter(x=t / div, y=_surv(t, g['c Before'], beta), mode='lines', showlegend=False, legendgroup=g['Group'],
-                                 line=dict(color=color, width=1.4, dash='dash'), opacity=0.6, hoverinfo='skip'))
-        fig.add_trace(go.Scatter(x=t / div, y=_surv(t, g['c After'], beta), mode='lines', name=f"{g['Group']} ({g['Stops']:,.0f} stops)",
-                                 legendgroup=g['Group'], line=dict(color=color, width=3),
-                                 hovertemplate=g['Group'] + '<br>%{y:.0f}% still running at %{x:.1f} ' + unit_name + '<extra></extra>'))
-    _survival_axes(fig, unit_name)
-    return _base(fig, mode, height=400, margin=dict(l=8, r=18, t=14, b=8)), unit_name
-
-
-def units_median_dots(table, short, mode):
-    """Median run without a stop, After basis, per unit, with the likely range. Log axis, so dots not bars."""
+def run_length_bars(table, short, mode):
+    """Typical running time before a unit stops, per unit."""
     p = PAL[mode]
     d = table.dropna(subset=['Median run After (h)']).copy()
     d['name'] = d['Unit'].map(lambda u: short.get(u, u))
-    d = d.sort_values('Median run After (h)')
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=d['Median run After (h)'], y=d['name'], mode='markers+text', name='Median run (After)',
-        marker=dict(color=p['main'], size=13, line=dict(color=p['tip'], width=1.5)),
-        error_x=dict(type='data', symmetric=False, array=(d['Median After high (h)'] - d['Median run After (h)']).clip(lower=0),
-                     arrayminus=(d['Median run After (h)'] - d['Median After low (h)']).clip(lower=0), color=p['pale'], thickness=5, width=0),
-        text=[_hours_label(v) for v in d['Median run After (h)']], textposition='top center', textfont=dict(color=p['ink'], size=12),
-        customdata=np.stack([d['Median After low (h)'], d['Median After high (h)'], d['Own stops']], axis=1),
-        hovertemplate='%{y}<br>Median run %{x:.1f} h<br>likely range %{customdata[0]:.1f} to %{customdata[1]:.1f} h<br>%{customdata[2]:,.0f} stops counted<extra></extra>'))
-    fig.add_trace(go.Scatter(x=[None], y=[None], mode='lines', name='Likely range', line=dict(color=p['pale'], width=5)))
-    lo = float(min(d['Median After low (h)'].min(), d['Median run After (h)'].min()))
-    hi = float(max(d['Median After high (h)'].max(), d['Median run After (h)'].max()))
-    mid = np.log10(np.sqrt(max(lo, 1e-3) * max(hi, 1e-3)))
-    half = max((np.log10(max(hi, 1e-3)) - np.log10(max(lo, 1e-3))) / 2 * 1.35, 0.5)  # always at least one decade wide
-    lo_x, hi_x = 10 ** (mid - half), 10 ** (mid + half)
-    ticks = [v for v in (0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000) if lo_x <= v <= hi_x]
-    fig.update_xaxes(tickvals=ticks, ticktext=[_hours_label(v) for v in ticks])
-    fig.update_xaxes(type='log', range=[mid - half, mid + half], title_text='Median continuous run before the unit stops (hours, log scale)')
-    fig.update_yaxes(type='category', categoryorder='array', categoryarray=list(d['name']), showgrid=True, range=[-0.6, len(d) - 0.3])
-    return _base(fig, mode, height=max(300, 46 * len(d) + 130), margin=dict(l=8, r=30, t=24, b=8))
-
-
-def _hours_label(h):
-    if h < 1:
-        return f'{h * 60:.0f} min'
-    if h < 48:
-        return f'{h:.1f} h'
-    return f'{h / 24:.1f} d'
+    d = d.sort_values('Median run After (h)', ascending=False).iloc[::-1]
+    fig = go.Figure(go.Bar(y=d['name'], x=d['Median run After (h)'], orientation='h', marker_color=p['main'],
+                           text=[_hours_label(v) for v in d['Median run After (h)']], textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
+                           hovertemplate='%{y}<br>%{x:,.1f} hours<extra></extra>'))
+    fig.update_xaxes(title_text='Hours of running before a stop', range=[0, float(d['Median run After (h)'].max()) * 1.2])
+    fig.update_yaxes(type='category', showgrid=False)
+    return _base(fig, mode, height=max(280, 42 * len(d) + 100), legend=False, margin=dict(l=8, r=30, t=10, b=8))
 
 
 # ---------------------------------------------------------------------------------------------- strategy and attribution
@@ -6290,27 +6117,24 @@ def improvement_bars(improvement, mode, top=10):
 # ====================================================================================================
 # module ui.tabs
 # ====================================================================================================
-'ui.tabs': r'''"""The tabs, in the old dashboard's order and names, filled from the new notebook engine.
+'ui.tabs': r'''"""The tabs, in the old dashboard's order and names, filled from the new notebook engine. Plain charts, short text, no settings.
 
 Old tab                    -> here
-OEE & Data Integrity       -> Availability & Integrity (Availability, Calendar Availability, Utilization; checks)
-Roaster Attribution        -> Roaster Attribution (comments blamed on units; lines that have a Roaster log only)
-Strategy & Improvement     -> Strategy & Improvement (what fixing a group is worth; planned-share sensitivity; findings)
-Theme Breakdown            -> Theme Breakdown (how much of each log is understood; themes and the reasons behind them)
-Own Reason Logs            -> Own Reason Logs (each unit's own biggest reasons; own log against Roaster comments)
-Raw Logs                   -> Raw Logs (every reason row with how it was classed)
-Predictive Analytics       -> Predictive Analytics (Monte Carlo forecast, backtest, time between stops)
+OEE & Data Integrity       -> Availability & Integrity
+Roaster Attribution        -> Roaster Attribution (lines with a Roaster log only)
+Strategy & Improvement     -> Strategy & Improvement
+Theme Breakdown            -> Theme Breakdown
+Own Reason Logs            -> Own Reason Logs
+Raw Logs                   -> Raw Logs
+Predictive Analytics       -> Predictive Analytics (forecast, forecast check, time between stops)
 Report Export              -> Report Export (Excel and PDF)
 """
-import numpy as np
 import pandas as pd
 import streamlit as st
 
-from engine import core, runner
-from . import charts
-from . import dc, guide
-from .dc import (_ICON_BAR_CHART, _ICON_BOLT, _ICON_CALENDAR_X, _ICON_CLOCK, _ICON_GAUGE, _ICON_SCALE, _ICON_TARGET, _ICON_UPLOAD, _ICON_ALARM,
-                 callout, dc_card_head, dc_metric_card, esc, findings_list, fmt_hours, fmt_pct, metric_grid, note_card, stat_row)
+from engine import runner
+from . import charts, guide
+from .dc import (_ICON_BAR_CHART, _ICON_CLOCK, _ICON_GAUGE, callout, dc_metric_card, esc, findings_list, fmt_hours, fmt_pct, metric_grid, note_card)
 
 
 def tab_names(a):
@@ -6330,14 +6154,10 @@ def h2(text):
     st.markdown(f'## {text}')
 
 
-def note(text):
-    md(f'<p class="dc-note">{esc(text)}</p>')
-
-
 def show(df, height='auto', index=False):
-    """Interactive table, numbers rounded to one decimal."""
+    """Table, numbers rounded to one decimal."""
     if df is None or len(df) == 0:
-        st.caption('Nothing to show for this view.')
+        st.caption('Nothing to show.')
         return
     d = df.copy()
     for col in d.columns:
@@ -6379,7 +6199,7 @@ def headline_unit(a, key):
 
 
 def own_pareto(L, unit):
-    """Biggest unplanned reasons in the unit's own log, with the running share of unplanned hours."""
+    """Biggest unplanned reasons in the unit's own log."""
     log = L.logs[unit]
     un = log[log['Class'] == 'Unplanned loss']
     if not len(un):
@@ -6392,13 +6212,7 @@ def own_pareto(L, unit):
     return g
 
 
-# ---------------------------------------------------------------------------------------------- the glance and tab introductions
-def intro(name):
-    html = guide.intro_html(name)
-    if html:
-        md(html)
-
-
+# ---------------------------------------------------------------------------------------------- the glance (above the tabs)
 def _improvement_rows(a, unit):
     t = table_for(a, 'A_attributed_improvement')
     if not len(t):
@@ -6410,17 +6224,16 @@ def _improvement_rows(a, unit):
     label = 'Group' if 'Group' in t.columns else 'Allocated_To'
     hours = 'Window hrs' if 'Window hrs' in t.columns else 'Total_Duration_hours'
     t = t.sort_values(hours, ascending=False)
-    return [(str(r[label]), float(r[hours]), float(r['Availability gain (pp)'])) for _, r in t.iterrows()]
+    return [(str(r[label]), float(r[hours])) for _, r in t.iterrows()]
 
 
 def render_glance(a):
-    """Four plain answers about the headline unit, above the tabs. Built only from tables the engine already produced."""
     L = a.L
     units = list(L.headline)
     if len(units) == 1:
         unit = units[0]
     else:
-        unit = st.radio('Show the summary for', units, key=f'glance_unit_{a.line_key}', horizontal=True, format_func=lambda u: short_of(a).get(u, u))
+        unit = st.radio('Summary for', units, key=f'glance_unit_{a.line_key}', horizontal=True, format_func=lambda u: short_of(a).get(u, u))
     M = L.metrics[unit]
     vague = {v.lower() for v in runner.vague_causes()} | {'unattributable'}
     rows = _improvement_rows(a, unit)
@@ -6439,173 +6252,131 @@ def render_glance(a):
         vague_col = next((k for k in cov.columns if k.startswith('Vague')), None)
         if vague_col:
             clear = max(0.0, 100.0 - float(c[vague_col]) - float(c.get('No theme (%)', 0.0)))
-    d = L.dfs[unit]['Date']
-    window = f'{d.min().day} {d.min():%b %Y} to {d.max().day} {d.max():%b %Y}'
-    cards = guide.glance_cards(short_of(a).get(unit, unit), M.days, M.availability, top_loss, top_clear, forecast, clear, vague)
-    md(guide.glance_html(short_of(a).get(unit, unit), cards, window))
+    cards = guide.glance_cards(M.days, M.availability, top_loss, top_clear, forecast, clear, vague)
+    md(guide.glance_html(short_of(a).get(unit, unit), cards))
 
 
 # ---------------------------------------------------------------------------------------------- Availability & Integrity
 def render_integrity(a, mode):
     L = a.L
-    md(dc_card_head(_ICON_GAUGE, 'Availability, Calendar Availability and Utilization',
-                    'Overall window figures. The reason logs carry no dates, so there is no day-by-day version.'))
     unit = headline_unit(a, f'ov_unit_{a.line_key}')
     M = L.metrics[unit]
     md(metric_grid([
-        dc_metric_card('Availability', fmt_pct(M.availability), f'Running time / planned production time. {M.days} days.', _ICON_GAUGE, 'orange', '%'),
-        dc_metric_card('Calendar Availability', fmt_pct(M.calendar_availability), 'Running time / the full time base.', _ICON_CLOCK, 'green', '%'),
-        dc_metric_card('Utilization', fmt_pct(M.utilization), 'Planned production time / the time base.', _ICON_BAR_CHART, 'coral', '%'),
+        dc_metric_card('Availability', fmt_pct(M.availability), 'of planned production time', _ICON_GAUGE, 'orange', '%'),
+        dc_metric_card('Calendar Availability', fmt_pct(M.calendar_availability), 'of the full time base', _ICON_CLOCK, 'green', '%'),
+        dc_metric_card('Utilization', fmt_pct(M.utilization), 'of the time base planned for production', _ICON_BAR_CHART, 'coral', '%'),
     ]))
-    pm_label = runner.PLANNED_MAINTENANCE_LABELS[a.options['planned_maintenance']].lower()
     if M.pm and M.pm > 0:
-        md(callout(f'{M.pm:,.0f} h of planned maintenance is {pm_label}. Change this under Analysis Settings in the sidebar and run again.',
-                   title='Planned maintenance'))
+        st.caption(f'Planned maintenance left out: {M.pm:,.0f} h.')
 
     h2('Where the hours go')
-    note('Every hour of the window, from the calendar down to the time the unit was actually running.')
     bridge = table_for(a, 'bridge', unit)
     if len(bridge):
-        chart(charts.bridge_waterfall(bridge, mode), f'bridge_{a.line_key}_{unit}')
-    cols = st.columns(2)
-    with cols[0]:
-        st.markdown('### How the downtime is counted')
-        note('Planned, unplanned and waiting come from the wording of each reason.')
-        show(table_for(a, 'class_table', unit).drop(columns=['Unit'], errors='ignore'))
-    with cols[1]:
-        st.markdown('### What if the planned share is different?')
-        note('A guide to how far Availability could move.')
-        show(table_for(a, 'sensitivity', unit).drop(columns=['Unit'], errors='ignore'))
+        chart(charts.bridge_bars(bridge, mode), f'bridge_{a.line_key}_{unit}')
 
-    h2('Every unit side by side')
     overall = table_for(a, 'units_overall')
     if len(overall):
-        chart(charts.availability_dots(overall, short_of(a), mode), f'avail_{a.line_key}')
-        show(overall)
-    monthly = table_for(a, 'units_monthly')
-    if len(monthly):
-        st.markdown('### Month by month')
-        mu = pick('Unit', monthly['Unit'].unique(), f'mo_unit_{a.line_key}', fmt=lambda u: short_of(a).get(u, u))
-        chart(charts.monthly_lines(monthly, mu, mode), f'monthly_{a.line_key}_{mu}')
-        with st.expander('Monthly table'):
-            show(monthly[monthly['Unit'] == mu].drop(columns=['Unit']))
+        h2('All units')
+        chart(charts.availability_bars(overall, short_of(a), mode), f'avail_{a.line_key}')
+        with st.expander('Table'):
+            show(overall)
 
-    h2('Data integrity')
-    note('Checks that the workbook was read correctly. Most people can skip the tables unless a warning shows here.')
+    monthly = table_for(a, 'units_monthly', unit)
+    if len(monthly):
+        h2('By month')
+        chart(charts.monthly_lines(monthly, unit, mode), f'monthly_{a.line_key}_{unit}')
+
     reconcile = next((f for f in L.findings if 'reconcile' in f), None)
-    if reconcile:
-        md(callout(reconcile, title='Reason logs against the daily sheet', tone='good' if reconcile.rstrip().endswith('none.') else 'warn'))
-    with st.expander('Show the workbook checks'):
-        md(dc_card_head(_ICON_UPLOAD, 'Load check', 'The daily sheet and each reason log, checked rather than trusted'))
-        st.markdown('### Daily sheet')
+    if reconcile and not reconcile.rstrip().endswith('none.'):
+        md(callout(reconcile, title='Check the reason logs', tone='warn'))
+    with st.expander('Workbook checks'):
+        st.markdown('**Daily sheet**')
         show(table_for(a, 'daily_checks'))
-        st.markdown('### Reason logs')
-        note('Log hours should match the daily downtime closely.')
+        st.markdown('**Reason logs**')
         show(table_for(a, 'log_checks'))
-    integrity = table_for(a, 'integrity')
-    if len(integrity):
-        with st.expander('Do neighbouring units move together?'):
-            st.caption('Daily downtime of each unit against the reference unit. A high correlation means the units stop together, '
-                       'for example because one waits on another.')
-            show(integrity)
-    with st.expander('Reasons counted as planned'):
-        show(table_for(a, 'rules_review_planned'))
-    with st.expander('Reasons counted as waiting'):
-        show(table_for(a, 'rules_review_waiting'))
+        st.markdown('**How downtime was counted**')
+        show(table_for(a, 'class_table', unit).drop(columns=['Unit'], errors='ignore'))
+        st.markdown('**If the planned share were different**')
+        show(table_for(a, 'sensitivity', unit).drop(columns=['Unit'], errors='ignore'))
+        for name, title in (('rules_review_planned', 'Reasons counted as planned'), ('rules_review_waiting', 'Reasons counted as waiting')):
+            t = table_for(a, name)
+            if len(t):
+                st.markdown(f'**{title}**')
+                show(t)
 
 
 # ---------------------------------------------------------------------------------------------- Roaster Attribution
 def render_attribution(a, mode):
-    L = a.L
-    md(dc_card_head(_ICON_TARGET, 'Roaster comments, by the unit they blame',
-                    'The Roaster log names the unit that held it up. Unattributable means the comment names no unit.'))
     attribution = table_for(a, 'A_attribution')
     if len(attribution):
+        h2('Roaster comments by the unit they blame')
         chart(charts.attribution_bars(attribution, mode), f'attr_{a.line_key}')
-        with st.expander('Table'):
-            show(attribution)
     pareto = table_for(a, 'A_attributed_pareto')
     if len(pareto):
         h2('Biggest reasons in the Roaster log')
-        note('Green bars are waiting, brown bars are stops and other unplanned time. The share in each label is cumulative.')
         chart(charts.pareto_bars(pareto, mode), f'pareto_{a.line_key}')
     two = table_for(a, 'C_two_views')
     if len(two):
-        h2('Roaster comments against each unit\'s own log')
-        note('Each unit\'s own log records far more than the Roaster comments blame on it. They are two views of the same time, not a mistake.')
+        h2("Roaster comments against each unit's own log")
         chart(charts.two_views_bars(two, mode), f'twoviews_{a.line_key}')
-        with st.expander('Tables'):
-            show(two)
-            show(table_for(a, 'C_theme_comparison'))
+    with st.expander('Tables'):
+        show(attribution)
+        show(two)
 
 
 # ---------------------------------------------------------------------------------------------- Strategy & Improvement
 def render_strategy(a, mode):
     L = a.L
-    md(dc_card_head(_ICON_SCALE, 'What fixing a group would be worth',
-                    'Availability gain is the rise in Availability if all the unplanned downtime in that group disappeared.'))
+    h2('What fixing a group would be worth')
+    st.caption('Rise in Availability if all the unplanned downtime in that group disappeared.')
     improvement = table_for(a, 'A_attributed_improvement')
     if not len(improvement):
         improvement = table_for(a, 'own_improvement')
     if len(improvement):
-        label = 'Group' if 'Group' in improvement.columns else 'Allocated_To'
         if 'Unit' in improvement.columns and improvement['Unit'].nunique() > 1:
-            u = pick('Unit', improvement['Unit'].unique(), f'imp_unit_{a.line_key}', fmt=lambda x: short_of(a).get(x, x))
+            u = headline_unit(a, f'imp_unit_{a.line_key}')
             improvement = improvement[improvement['Unit'] == u]
         chart(charts.improvement_bars(improvement, mode), f'imp_{a.line_key}_{improvement["Unit"].iloc[0] if "Unit" in improvement else ""}')
         with st.expander('Table'):
             show(improvement.drop(columns=['Unit'], errors='ignore'))
-    h2('How far Availability could move')
-    unit = headline_unit(a, f'st_unit_{a.line_key}') if len(L.headline) > 1 else L.headline[0]
-    show(table_for(a, 'sensitivity', unit).drop(columns=['Unit'], errors='ignore'))
-    h2('What the numbers say')
-    note('Written from the tables in this run, in plain language.')
     if L.findings:
-        md(findings_list(L.findings))
-    else:
-        st.caption('No findings were produced for this run.')
+        with st.expander('Written summary'):
+            md(findings_list(L.findings))
 
 
 # ---------------------------------------------------------------------------------------------- Theme Breakdown
 def render_themes(a, mode):
     L = a.L
     short = short_of(a)
-    md(dc_card_head(_ICON_TARGET, 'How much of each log is understood',
-                    'Vague reasons are kept apart on purpose: they say a unit stopped, not why.'))
+    h2('How much of each log is explained')
     if len(L.coverage):
         chart(charts.coverage_bars(L.coverage, short, mode), f'cov_{a.line_key}')
-        with st.expander('Table'):
-            show(L.coverage.reset_index())
-    h2('Themes in a unit\'s own log')
+    h2('Themes by unit')
     units = list(L.by_unit_themes)
     unit = pick('Unit', units, f'th_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
-    themes = L.by_unit_themes[unit]
-    chart(charts.themes_bar(themes, mode), f'themes_{a.line_key}_{unit}')
+    chart(charts.themes_bar(L.by_unit_themes[unit], mode), f'themes_{a.line_key}_{unit}')
     reasons = table_for(a, 'own_theme_reasons', unit)
     if len(reasons):
-        theme = st.selectbox('See the reasons behind a theme', list(themes.index), key=f'th_theme_{a.line_key}_{unit}')
-        show(reasons[reasons['Theme'] == theme][['Reason', 'Hours', 'Events', '% of theme', 'Waiting']])
+        with st.expander('Reasons behind each theme'):
+            show(reasons[['Theme', 'Reason', 'Hours', 'Events', 'Waiting']])
 
 
 # ---------------------------------------------------------------------------------------------- Own Reason Logs
 def render_own_logs(a, mode):
     L = a.L
     short = short_of(a)
-    md(dc_card_head(_ICON_UPLOAD, 'Each unit\'s own reason log', 'Biggest unplanned reasons, with the running share of unplanned hours.'))
-    units = [u for u in L.logged]
-    unit = pick('Unit', units, f'ol_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
+    unit = pick('Unit', list(L.logged), f'ol_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
     pareto = own_pareto(L, unit)
+    h2('Biggest unplanned reasons')
     if len(pareto):
-        note('Green bars are waiting, brown bars are stops and other unplanned time.')
         chart(charts.pareto_bars(pareto, mode), f'ownpareto_{a.line_key}_{unit}')
         with st.expander('Table'):
-            show(pareto.drop(columns=['source']))
+            show(pareto.drop(columns=['source', 'cumulative_pct']))
     else:
-        st.caption('This unit has no unplanned reasons in its log.')
+        st.caption('No unplanned reasons in this log.')
     two = table_for(a, 'C_two_views')
     if len(two):
         h2('Own log against Roaster comments')
-        note('The same unit seen two ways: what the Roaster comments blame on it, and what its own log records.')
         chart(charts.two_views_bars(two, mode), f'olviews_{a.line_key}')
 
 
@@ -6613,87 +6384,66 @@ def render_own_logs(a, mode):
 def render_raw(a, mode):
     L = a.L
     short = short_of(a)
-    md(dc_card_head(_ICON_UPLOAD, 'Raw reason logs', 'Every reason row, with how the wording rules classed it.'))
     unit = pick('Unit', L.logged, f'raw_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
     log = L.logs[unit]
     c1, c2 = st.columns([1, 1.4])
     with c1:
         classes = st.multiselect('Counted as', sorted(log['Class'].unique()), default=sorted(log['Class'].unique()), key=f'raw_cls_{a.line_key}_{unit}')
     with c2:
-        query = st.text_input('Search the reason', key=f'raw_q_{a.line_key}_{unit}', placeholder='for example: jam')
+        query = st.text_input('Search', key=f'raw_q_{a.line_key}_{unit}', placeholder='for example: jam')
     d = log[log['Class'].isin(classes)]
     if query.strip():
         d = d[d['Reason'].astype(str).str.contains(query.strip(), case=False, regex=False)]
-    st.caption(f'{len(d):,} of {len(log):,} rows. {d["Duration_hours"].sum():,.1f} h.')
+    st.caption(f'{len(d):,} of {len(log):,} rows, {d["Duration_hours"].sum():,.1f} h')
     show(d.sort_values('Duration_hours', ascending=False), height=420)
-    st.download_button('Download these rows (CSV)', d.to_csv(index=False).encode('utf-8'), file_name=f'{L.tag}_{short.get(unit, unit)}_reasons.csv',
+    st.download_button('Download CSV', d.to_csv(index=False).encode('utf-8'), file_name=f'{L.tag}_{short.get(unit, unit)}_reasons.csv',
                        mime='text/csv', key=f'raw_dl_{a.line_key}_{unit}')
-    with st.expander('Daily downtime for this unit'):
-        daily = L.dfs.get(unit)
-        if daily is not None:
-            show(daily)
 
 
 # ---------------------------------------------------------------------------------------------- Predictive Analytics
 def render_predictive(a, mode):
-    import os
-    names = ['Monte Carlo forecast', 'Backtest', 'Time between stops']
-    try:
-        parts = st.tabs(names, key=f'pred_tabs_{a.line_key}', on_change='rerun')
-    except TypeError:
-        parts = st.tabs(names)
-    eager = bool(os.environ.get('DOWNTIME_APP_EAGER'))
-    for part, fn in zip(parts, (render_forecast, render_backtest, render_weibull)):
-        if eager or getattr(part, 'open', True):
-            with part:
-                fn(a, mode)
-
-
-def render_forecast(a, mode):
     L = a.L
     short = short_of(a)
     days = int(a.options['forecast_days'])
-    md(dc_card_head(_ICON_ALARM, f'The next {days} days',
-                    f'{int(a.options["n_trials"]):,} possible periods built from how often each reason happened and how long it lasted.'))
-    note('It predicts how many unplanned hours to expect, not when a stop will happen. Planned and unplanned are told apart by the wording of the reasons.')
-    units = [u for u in L.logged if u in L.forecast_sims]
-    unit = pick('Unit', units, f'fc_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
-    own, wait = L.forecast_sims[unit]
-    total = own + wait
-    p10, p50, p90 = np.percentile(total, [10, 50, 90])
-    md(stat_row([
-        dict(label='Unplanned hours, most likely', value=f'{p50:,.0f} h', note='Half of the simulated periods were lower, half higher (P50).'),
-        dict(label='Good case', value=f'{p10:,.0f} h', note='Only 1 in 10 periods was this low or lower (P10).'),
-        dict(label='Bad case', value=f'{p90:,.0f} h', note='Only 1 in 10 periods was this high or higher (P90).'),
-        dict(label='Of the most likely, waiting', value=f'{np.percentile(wait, 50):,.0f} h', note='Waiting on other units or on supply.'),
-    ]))
-    chart(charts.forecast_hist(own, wait, days, mode), f'fhist_{a.line_key}_{unit}')
+
+    h2(f'Next {days} days')
+    fu = table_for(a, 'forecast_units')
+    if len(fu):
+        chart(charts.forecast_bars(fu, short, mode), f'fc_{a.line_key}')
     hf = table_for(a, 'headline_forecast')
     if len(hf):
-        h2('Availability over the same period')
-        note('The range moves a little with how much planned time is booked. P50 is the most likely value.')
-        hu = pick('Headline unit', hf['Unit'].unique(), f'fc_head_{a.line_key}', fmt=lambda u: short.get(u, u))
-        chart(charts.scenario_ranges(hf, hu, mode), f'fscen_{a.line_key}_{hu}')
-        with st.expander('Scenario table'):
-            show(hf[hf['Unit'] == hu])
-    with st.expander('Forecast for every unit'):
-        show(table_for(a, 'forecast_units'))
+        base = hf[hf['Scenario'] == 'Base'] if 'Scenario' in hf.columns else hf
+        t = pd.DataFrame({
+            'Unit': base['Unit'].map(lambda u: short.get(u, u)),
+            'Availability, low (%)': base['Availability P10 (%)'],
+            'Availability, most likely (%)': base['Availability P50 (%)'],
+            'Availability, high (%)': base['Availability P90 (%)'],
+        })
+        show(t)
 
-
-def render_backtest(a, mode):
     bt = table_for(a, 'backtest_units')
-    md(dc_card_head(_ICON_BOLT, 'Was the forecast right?',
-                    f'The last {int(a.options["backtest_days"])} days were held back, forecast from the days before, and compared with what happened.'))
-    if not len(bt):
-        st.caption('No backtest for this run.')
-        return
-    note('Each unit is scaled so its forecast P50 is 1.0. A diamond inside the grey bar means the forecast covered what happened.')
-    chart(charts.backtest_ratio(bt, short_of(a), mode), f'bt_{a.line_key}')
-    md(callout('The reason log has no dates, so the forecast learns from the same days it is tested on. Treat a pass as a sanity check, not a guarantee.',
-               title='How far to trust it', tone='warn'))
-    with st.expander('Backtest tables'):
-        show(bt)
-        show(table_for(a, 'backtest_total'))
+    if len(bt):
+        h2(f'Forecast check, last {int(a.options["backtest_days"])} days')
+        chart(charts.backtest_bars(bt, short, mode), f'bt_{a.line_key}')
+        show(pd.DataFrame({'Unit': bt['Unit'].map(lambda u: short.get(u, u)), 'Forecast (h)': bt['Forecast P50'],
+                           'Actual (h)': bt['Actual (scaled, hrs)'], 'Result': bt['Verdict']}))
+
+    h2('Time between stops')
+    all_w = runner.weibull_all(a, float(a.options['weibull_beta']), ())
+    rows = [w.summary for w in all_w.values() if w.curves is not None and w.running > 0]
+    if rows:
+        table = pd.DataFrame(rows)
+        chart(charts.run_length_bars(table, short, mode), f'wb_units_{a.line_key}')
+        shown = pd.DataFrame({
+            'Unit': table['Unit'].map(lambda u: short.get(u, u)),
+            'Stops counted': table['Own stops'].round(0),
+            'Typical run before a stop': table['Median run After (h)'].map(fmt_hours),
+            'Likely range': [f'{fmt_hours(lo)} to {fmt_hours(hi)}' for lo, hi in zip(table['Median After low (h)'], table['Median After high (h)'])],
+        })
+        show(shown)
+        mostly_vague = [short.get(u, u) for u, w in all_w.items() if w.curves is not None and len(w.groups) and _vague_share(w) > 0.5]
+        if mostly_vague:
+            st.caption('Mostly unclear stops (Unknown, Minor stops), so times are short: ' + ', '.join(mostly_vague) + '.')
 
 
 def _vague_share(W):
@@ -6703,133 +6453,32 @@ def _vague_share(W):
     return float(g.loc[g['Kind'] == 'Vague cause', 'Stops'].sum() / max(g['Stops'].sum(), 1e-9))
 
 
-def render_weibull(a, mode):
-    L = a.L
-    short = short_of(a)
-    units = [u for u in L.units if u in L.logs]
-    md(dc_card_head(_ICON_CLOCK, 'Time between stops',
-                    'How long a unit is likely to run before it next stops, before and after taking planned time out of the running time.'))
-    with st.expander('How to read this'):
-        st.markdown(
-            '- The curve is the **chance the unit is still running without a stop** after a given continuous run. It starts at 100% and falls.\n'
-            '- Where it crosses **50%** is the median run: half of runs last longer, half stop sooner. It is not a 50% chance of breakdown today.\n'
-            '- **Before** counts planned time as running time, which flatters the unit. **After** uses only the time it was really running.\n'
-            '- The **whole-unit curve** answers "when will this unit next stop?". The **cause curves** show which cause is behind the stops.\n'
-            '- The shape says whether stops become likelier the longer a run lasts. 1 means no wear-out, above 1 a rising chance. '
-            'It is an assumption here, because the reason logs carry no time stamps for single stops.')
-    c1, c2, c3 = st.columns([1.2, 1.4, 1.6])
-    with c1:
-        unit = pick('Unit', units, f'wb_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
-    with c2:
-        beta = st.slider('Shape (wear-out)', 0.8, 3.0, float(a.options['weibull_beta']), 0.1, key=f'wb_beta_{a.line_key}',
-                         help='1.0: stops are random. Above 1: the longer it runs, the likelier a stop.')
-    with c3:
-        identified = st.toggle('Identified causes only', key=f'wb_ident_{a.line_key}',
-                               help='Leaves Unknown, Minor stops and Not clearly identified out of the whole-unit curve. Their hours still leave the running time.')
-    view = 'own'
-    if unit == L.reference and L.attribution:
-        pick_view = st.radio('View', ['Own log', 'Roaster comments blamed on units'], horizontal=True, key=f'wb_view_{a.line_key}', label_visibility='collapsed')
-        view = 'own' if pick_view == 'Own log' else 'A_attributed'
-    leave = runner.vague_causes() if identified else ()
-    W = runner.weibull_live(a, unit, view, beta, leave)
-    if W.curves is None or W.running <= 0:
-        md(callout(W.summary.get('Evidence', 'Not enough stops to draw a curve.'), title='No curve for this view', tone='warn'))
-        return
-    s = W.summary
-    vague = _vague_share(W)
-    if vague > 0.5 and not identified:
-        md(callout(f'{vague * 100:.0f}% of the counted stops are Unknown, Minor or Not clearly identified. They set the pace here. '
-                   'Switch on "Identified causes only" to see the run time with the unclear stops left out.', title='Most stops are unclear', tone='warn'))
-    med = float(s['Median run After (h)'])
-    md(stat_row([
-        dict(label='Median run, after', value=fmt_hours(med), note=f'Likely range {fmt_hours(s["Median After low (h)"])} to {fmt_hours(s["Median After high (h)"])}.'),
-        dict(label='Median run, before', value=fmt_hours(s['Median run Before (h)']), note='Planned time counted as running.'),
-        dict(label='Planned time taken out', value=f'{W.planned:,.0f} h', note=f'{s["Planned (% of log window)"]:.1f}% of the window.'),
-        dict(label='Counted stops', value=f'{s["Own stops"]:,.0f}', note=f'{W.running:,.0f} h of running time.'),
-    ]))
-    st.markdown('### The whole unit')
-    note('All counted causes together, assumed to act independently. Drag the reader to see the chance at any running time.')
-    hours_max = float(max(charts.curve_limit([W.curves['After'], W.curves['Before']], W.beta), 1e-3))
-    div, scale_name = charts.time_scale(hours_max)
-    top = hours_max / div
-    key = f'wb_t_{a.line_key}_{unit}_{view}_{scale_name}'
-    default = float(np.clip(med / div, top / 200, top))
-    if key not in st.session_state or not (top / 200 <= st.session_state[key] <= top):
-        st.session_state[key] = default
-    reading = st.slider(f'Read the curve at a running time ({scale_name})', float(top / 200), float(top), step=float(top / 400), key=key)
-    mark = reading * div
-    fig, _ = charts.unit_survival(W, mode, mark_hours=mark)
-    chart(fig, f'wb_unit_{a.line_key}_{unit}_{view}')
-    c = W.curves['After']
-    now = float(np.exp(-c * mark ** W.beta))
-    nxt = float(np.exp(-c * (mark + 24) ** W.beta) / max(now, 1e-12)) if now > 0 else 0.0
-    md(callout(f'After {fmt_hours(mark)} of continuous running, there is a {now * 100:.0f}% chance the unit has not stopped yet. '
-               f'Of the runs that get that far, about {nxt * 100:.0f}% go on for another 24 hours without a stop.', title='Reading it at your chosen time'))
-    prob = [(d, float(np.exp(-c * (24 * d) ** W.beta)) * 100) for d in core.PROBABILITY_DAYS]
-    st.caption('Chance of a run of this length without a stop:  ' + '   '.join(f'{d} day{"s" if d > 1 else ""}: {v:.0f}%' for d, v in prob))
-
-    groups = W.groups[W.groups['Kind'] == 'Identified cause'].head(3)
-    if len(groups):
-        st.markdown('### Which causes stop it')
-        note('The three biggest identified causes. Solid is after planned time is taken out, thin dashed is before.')
-        fig2, _ = charts.cause_survival(W, groups, mode)
-        chart(fig2, f'wb_cause_{a.line_key}_{unit}_{view}')
-    with st.expander('All causes in a table'):
-        show(core.group_table(W))
-    with st.expander('How sensitive is this to the shape?'):
-        sens = {f'Shape {b:g}': s.get(f'Median After, shape {b:g} (h)') for b in core.SHAPE_SENSITIVITY}
-        st.caption(f'Median run, after, if the shape were different. Fitted from the daily data: '
-                   f'{"n/a" if pd.isna(s["Shape fitted"]) else format(s["Shape fitted"], ".2f")}. The setting above is {W.beta:g}.')
-        show(pd.DataFrame([sens]))
-
-    h2('All units')
-    note('Median continuous run before each unit stops, after taking planned time out. Dots are medians, bars the likely range.')
-    all_w = runner.weibull_all(a, beta, leave)
-    rows = [w.summary for w in all_w.values() if w.curves is not None and w.running > 0]
-    if rows:
-        table = pd.DataFrame(rows)
-        chart(charts.units_median_dots(table, short, mode), f'wb_units_{a.line_key}')
-        cols = ['Unit', 'Own stops', 'Median run Before (h)', 'Median run, planned removed (h)', 'Median run After (h)', 'Median change (%)',
-                'Runs 1 d without a stop (%)', 'Runs 3 d without a stop (%)', 'Runs 7 d without a stop (%)', 'Evidence']
-        shown = table[[c for c in cols if c in table.columns]].copy()
-        shown['Unit'] = shown['Unit'].map(lambda u: short.get(u, u))
-        show(shown)
-    st.caption('A stop here is an unplanned reason that is not waiting and not material supply. Planned reasons are never stops. '
-               'Hours and counts are scaled to the daily downtime totals so the running time adds up to the calendar.')
-
-
 # ---------------------------------------------------------------------------------------------- Report Export
 CAVEATS = [
-    'Availability, Calendar Availability and Utilization are overall window figures, because the reason logs carry no dates.',
-    'Planned, unplanned and waiting are decided only from the wording of each reason. The Availability & Integrity tab lists the reasons counted as planned or waiting.',
-    'Days left blank in the daily sheet count as running time.',
-    'The forecast and the time-between-stops curves assume past patterns hold. Unknown, Minor stops and Not clearly identified are never guessed into a cause.',
-    'The Weibull shape is an assumption. The logs have no time stamps for single stops, so the shape cannot be measured from them.',
-    'The backtest tests the forecast on days it also learned from, so it is a sanity check rather than a proof.',
+    'Figures cover the whole window; the reason logs have no dates.',
+    'Planned, unplanned and waiting come from the wording of each reason.',
+    'Forecasts assume past patterns hold. Unknown stops are never guessed into a cause.',
 ]
 
 
 def render_export(a, mode, plant, build_pdf, excel_bytes, key):
     L = a.L
-    md(dc_card_head(_ICON_UPLOAD, 'Report export', 'An Excel workbook of every table, and a PDF with the key numbers, tables and charts.'))
     c1, c2 = st.columns(2)
     with c1:
-        st.download_button('Download Excel workbook', excel_bytes, file_name=f'{L.tag}_results.xlsx',
+        st.download_button('Download Excel', excel_bytes, file_name=f'{L.tag}_results.xlsx',
                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', width='stretch', key=f'dl_x_{key}')
     with c2:
         pdf_key = f'pdf_{key}'
         if pdf_key in st.session_state:
-            st.download_button('Download PDF report', st.session_state[pdf_key], file_name=f'{L.tag}_report.pdf', mime='application/pdf',
+            st.download_button('Download PDF', st.session_state[pdf_key], file_name=f'{L.tag}_report.pdf', mime='application/pdf',
                                width='stretch', key=f'dl_p_{key}')
-        elif st.button('Prepare PDF report', width='stretch', key=f'prep_{key}'):
-            with st.spinner('Building the report'):
+        elif st.button('Prepare PDF', width='stretch', key=f'prep_{key}'):
+            with st.spinner('Building the PDF'):
                 st.session_state[pdf_key] = build_pdf()
             st.rerun()
     if plant is not None and len(plant):
-        h2('Plant comparison')
-        note('The headline unit of every line run in this session. Lines differ in planned time and wording, so compare with care.')
+        h2('Lines compared')
         show(plant)
-    h2('What to keep in mind')
     md(note_card(CAVEATS))
 ''',
 # ====================================================================================================
@@ -7008,9 +6657,10 @@ def pdf_bytes(analysis, plant=None):
     pdf.set_text_color(*GREY)
     pdf.multi_cell(0, 7, 'Availability and downtime report', new_x='LMARGIN', new_y='NEXT')
     pdf.ln(4)
+    left_out = ', '.join(opts.get('exclude_months') or ()) or 'none'
     pdf.body(f'Workbook: {analysis.file_name}\nPrepared: {dt.date.today():%d %B %Y}\n'
              f'Planned maintenance: {runner.PLANNED_MAINTENANCE_LABELS[opts["planned_maintenance"]].lower()}.\n'
-             f'Forecast: {opts["forecast_days"]} days. Backtest: last {opts["backtest_days"]} days. Weibull shape setting: {opts["weibull_beta"]:g}.', 10, GREY)
+             f'Months left out: {left_out}. Forecast: {opts["forecast_days"]} days. Forecast check: last {opts["backtest_days"]} days.', 10, GREY)
 
     for unit in L.headline:
         M = L.metrics[unit]
@@ -7035,8 +6685,7 @@ def pdf_bytes(analysis, plant=None):
 
     if 'weibull_units' in results:
         pdf.h1('Time between stops')
-        pdf.body('Median continuous run before a unit stops, with planned time counted as running (before) and taken out (after). '
-                 'The shape of the curve is an assumption (the logs have no time stamps for single stops).', 9, GREY)
+        pdf.body('Typical running time before a unit stops, with planned time counted as running (before) and taken out (after).', 9, GREY)
         wu = results['weibull_units']
         cols = [c for c in ['Unit', 'Own stops', 'Median run Before (h)', 'Median run, planned removed (h)', 'Median run After (h)',
                             'Median After low (h)', 'Median After high (h)'] if c in wu.columns]
@@ -7044,7 +6693,7 @@ def pdf_bytes(analysis, plant=None):
             shown = wu[cols].copy()
             shown['Unit'] = shown['Unit'].map(lambda u: L.short.get(u, u))
             pdf.grid(shown)
-    for name, title in (('forecast_units', 'Forecast'), ('backtest_total', 'Backtest')):
+    for name, title in (('forecast_units', 'Forecast'), ('backtest_total', 'Forecast check')):
         if name in results and len(results[name]):
             pdf.h2(title)
             pdf.grid(results[name])
@@ -7070,6 +6719,7 @@ import hashlib
 import os
 import traceback
 
+import pandas as pd
 import streamlit as st
 
 from engine import configs, runner
@@ -7094,6 +6744,16 @@ def show_logo_if_present():
     """A missing logo must never crash the page, so it is skipped silently."""
     if os.path.exists(LOGO):
         st.image(LOGO, width='stretch')
+
+
+@st.cache_data(show_spinner=False, max_entries=16)
+def _months(line, digest, _data):
+    """Months that have rows in the uploaded workbook, so any of them can be left out."""
+    return runner.available_months(line, _data)
+
+
+def _month_label(month):
+    return pd.Timestamp(month + '-01').strftime('%b %Y')
 
 
 @st.cache_resource
@@ -7151,7 +6811,7 @@ if dev and 'dev_loaded' not in st.session_state:
 st.session_state.setdefault('runs', {})
 
 # ------------------------------------------------------------------------------ sidebar (same cards as the old dashboard)
-st.sidebar.markdown(dc_card_head(_ICON_BRANCH, 'Line Setup', 'Choose the line to analyse', step=1), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_BRANCH, 'Line Setup', 'Choose the line', step=1), unsafe_allow_html=True)
 st.sidebar.markdown(dc.spacer(6), unsafe_allow_html=True)
 if 'line' not in st.session_state and st.query_params.get('line') in configs.LINES:  # a shared link can open a line directly
     st.session_state['line'] = st.query_params['line']
@@ -7159,56 +6819,45 @@ line = st.sidebar.selectbox('Select line', list(configs.LINES), key='line', labe
 if st.query_params.get('line') != line:
     st.query_params['line'] = line
 cfg = configs.LINES[line]
-st.sidebar.caption(f'Cocoa primary processing · {len(cfg["daily"])} units')
 
 st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
 st.sidebar.markdown(dc_card_head(_ICON_UPLOAD, 'Upload Downtime Log', 'Drag and drop the .xlsx file', step=2), unsafe_allow_html=True)
 upload = st.sidebar.file_uploader('Upload Downtime Log (.xlsx)', type=['xlsx', 'xlsm'], key=f'up_{line}', label_visibility='collapsed')
 
-st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
-st.sidebar.markdown(dc_card_head(_ICON_CALENDAR_X, 'Exclude Month(s)', 'Drop a known bad-data window', tag='Optional'), unsafe_allow_html=True)
-march = st.sidebar.toggle('Exclude March', value=False, key='opt_march',
-                          help=f'Skips the March window defined for this line ({cfg["march_start"]} to {cfg["march_end"]}). Off by default.')
+file_hash = hashlib.sha1(upload.getvalue()).hexdigest() if upload is not None else None
 
-with st.sidebar.expander('Analysis Settings'):
-    pm = st.radio('Planned maintenance', list(runner.PLANNED_MAINTENANCE_LABELS), index=0, key='opt_pm',
-                  format_func=lambda k: runner.PLANNED_MAINTENANCE_LABELS[k],
-                  help='Left out: maintenance hours leave both the time base and the downtime. Planned stop: they stay in the time base.')
-    fdays = st.slider('Forecast days', 7, 90, runner.DEFAULT_OPTIONS['forecast_days'], key='opt_fdays')
-    bdays = st.slider('Backtest days', 7, 60, runner.DEFAULT_OPTIONS['backtest_days'], key='opt_bdays')
-    beta = st.slider('Weibull shape', 0.8, 3.0, runner.DEFAULT_OPTIONS['weibull_beta'], 0.1, key='opt_beta',
-                     help='Starting shape for the time-between-stops curves. It can be changed again on that tab without a new run.')
-    trials = st.select_slider('Simulated periods', [2000, 5000, 10000, 20000], value=10000, key='opt_trials')
-options = dict(planned_maintenance=pm, exclude_march=march, forecast_days=fdays, backtest_days=bdays, weibull_beta=beta, n_trials=trials)
+st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_CALENDAR_X, 'Exclude Month(s)', 'Leave out months with bad data', tag='Optional'), unsafe_allow_html=True)
+months_available = _months(line, file_hash, upload.getvalue()) if upload is not None else []
+month_key = f'excl_{line}'
+st.session_state[month_key] = [m for m in st.session_state.get(month_key, []) if m in months_available]  # drop choices the new file does not have
+if months_available:
+    excluded = st.sidebar.pills('Months to leave out', months_available, selection_mode='multi', key=month_key, format_func=_month_label,
+                                label_visibility='collapsed') or []
+else:
+    excluded = []
+    st.sidebar.caption('Add a workbook first.')
+options = dict(runner.DEFAULT_OPTIONS, exclude_months=tuple(sorted(excluded)))
 
 # what is on screen now, so the button can say what will happen
 prev_key = st.session_state.runs.get(line)
 prev = _store().get(prev_key) if prev_key else None
-file_hash = hashlib.sha1(upload.getvalue()).hexdigest() if upload is not None else None
 changed = prev is not None and (any(prev.options.get(k) != v for k, v in options.items()) or (file_hash is not None and file_hash != prev_key[1]))
 
 st.sidebar.markdown(dc.spacer(14), unsafe_allow_html=True)
-st.sidebar.markdown(dc_card_head(_ICON_BOLT, 'Analyse the file', 'Takes about 15 seconds', step=3), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_BOLT, 'Analyse', 'Reads the file and builds every tab', step=3), unsafe_allow_html=True)
 if prev is not None and not changed:
-    button_label, disabled, state = '✓ Results are up to date', True, ('good', f'Showing {prev.file_name}.')
+    button_label, disabled, state = '✓ Results are up to date', True, ('good', prev.file_name)
 elif prev is not None:
-    button_label, disabled, state = '↻ Run again', False, ('warn', 'The file or a setting changed since the last run.')
+    button_label, disabled, state = '↻ Run again', False, ('warn', 'The file or months changed.')
 elif upload is None:
-    button_label, disabled, state = '▶ Run Analysis', True, ('', 'Add a workbook to switch this on.')
+    button_label, disabled, state = '▶ Run Analysis', True, ('', 'Add a workbook first.')
 else:
-    button_label, disabled, state = '▶ Run Analysis', False, ('good', 'Ready. Press the button to start.')
+    button_label, disabled, state = '▶ Run Analysis', False, ('good', 'Ready.')
 if prev is not None and upload is None:
-    state = ('', f'Showing {prev.file_name}. Add a new workbook to analyse another file.')
+    state = ('', prev.file_name)
 run_clicked = st.sidebar.button(button_label, type='primary', width='stretch', disabled=disabled or (upload is None and prev is None), key='run')
 st.sidebar.markdown(f'<div class="dc-state dc-state-{state[0]}"><span class="dc-state-dot"></span><span>{dc.esc(state[1])}</span></div>', unsafe_allow_html=True)
-
-st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
-with st.sidebar.popover('Help and glossary', icon=':material/help:', width='stretch'):
-    st.markdown(guide.glossary_html(), unsafe_allow_html=True)
-    st.markdown('**Quick tips**')
-    st.markdown('- Hover a chart for exact numbers. Double-click it to reset the zoom.\n'
-                '- Click a table heading to sort it.\n'
-                '- Planned maintenance is set under Analysis Settings. Change it, then run again.')
 
 # ------------------------------------------------------------------------------ run gate: analysis starts on an explicit click
 holder = st.container()
@@ -7228,7 +6877,7 @@ if current_key and analysis is None:
 if analysis is None:
     show_logo_if_present()
     holder.markdown(dc_header(APP_NAME, APP_SUB, dc_pill(_ICON_BRANCH, line, 'orange')), unsafe_allow_html=True)
-    holder.markdown(guide.welcome_html(line, cfg['daily'], upload.name if upload is not None else None), unsafe_allow_html=True)
+    holder.markdown(guide.welcome_html(line, upload.name if upload is not None else None), unsafe_allow_html=True)
     st.stop()
 
 # ------------------------------------------------------------------------------ after a run
@@ -7258,12 +6907,9 @@ head = L.metrics[head_unit]
 dates = L.dfs[head_unit]['Date']
 window = f'{dates.min().day} {dates.min():%b %Y} – {dates.max().day} {dates.max():%b %Y}'
 pills = dc_pill(_ICON_BRANCH, line, 'orange') + dc_pill(_ICON_CALENDAR_X, window, 'gray')
-if len(L.headline) == 1:
-    pills += dc_pill(_ICON_GAUGE, f'Availability {head.availability:.1f}%', 'green')
+if analysis.options.get('exclude_months'):
+    pills += dc_pill(_ICON_WARN, 'Left out: ' + ', '.join(_month_label(m) for m in analysis.options['exclude_months']), 'coral')
 st.markdown(dc_header(APP_NAME, APP_SUB, pills), unsafe_allow_html=True)
-pm_text = runner.PLANNED_MAINTENANCE_LABELS[analysis.options['planned_maintenance']].lower()
-st.markdown(f'**{head.days} days analysed**' + (' (March excluded)' if analysis.options['exclude_march'] else ''))
-st.caption(f'Availability = running time / planned production time. Planned maintenance is {pm_text}. File: {analysis.file_name}.')
 if analysis.errors:
     st.markdown(dc.callout(f'{len(analysis.errors)} section(s) did not finish: ' + '; '.join(f'{k} ({v})' for k, v in analysis.errors.items()),
                            title='Partial results', tone='warn'), unsafe_allow_html=True)
@@ -7292,7 +6938,6 @@ for name, container in zip(names, containers):
     if not EAGER and not getattr(container, 'open', True):
         continue
     with container:
-        tabs.intro(name)
         try:
             if name == 'Report Export':
                 tabs.render_export(analysis, MODE, plant, lambda: report.pdf_bytes(analysis, plant), report.excel_bytes(analysis, plant),
