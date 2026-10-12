@@ -1,7 +1,7 @@
-"""Line Downtime: one-file version of the Streamlit app.
+"""Downtime & Availability Intelligence: one-file version of the Streamlit app (old dashboard layout and colours, new notebook engine).
 
 Run:   pip install streamlit plotly pandas numpy scipy openpyxl fpdf2 matplotlib Pillow
-       streamlit run line_downtime_app.py
+       streamlit run line_downtime_dashboard.py
 
 Layout of this file
   1. a small loader (below)
@@ -47,22 +47,22 @@ gatherUsageStats = false
 toolbarMode = "minimal"
 
 [theme.light]
-primaryColor = "#0071E3"
-backgroundColor = "#F5F5F7"
+primaryColor = "#B9743D"
+backgroundColor = "#FBF6EC"
 secondaryBackgroundColor = "#FFFFFF"
-textColor = "#1D1D1F"
+textColor = "#2A241C"
 
 [theme.dark]
-primaryColor = "#0A84FF"
-backgroundColor = "#000000"
-secondaryBackgroundColor = "#1C1C1E"
-textColor = "#F5F5F7"
+primaryColor = "#C97B3F"
+backgroundColor = "#17130E"
+secondaryBackgroundColor = "#221C15"
+textColor = "#F4ECDD"
 """
 
 
 def _ensure_theme_config():
     """Streamlit reads its theme when the server starts. If this folder has no .streamlit/config.toml, write one,
-    so the next launch has blue accents and follows the system light/dark setting. Never overwrites an existing file."""
+    so the next launch has the warm orange accents and follows the system light/dark setting. Never overwrites an existing file."""
     import os
     try:
         folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.streamlit')
@@ -5357,185 +5357,194 @@ def time_at_level(c, beta, level):
 # ====================================================================================================
 # module ui.theme
 # ====================================================================================================
-'ui.theme': r'''"""Look and feel: an Apple-style layer on top of Streamlit.
+'ui.theme': r'''"""Warm cream and orange palette from the old dashboard (design_system.py TOK), with an Apple-style layer on top.
 
-What it applies from the Apple design talks, translated to the web:
+Colours: the light tokens are the old TOK values unchanged. The dark tokens are a warm dark version of the same palette.
+Apple design applied (from the WWDC talks, translated to the web):
 - system font, size-specific tracking (tight on large text, none on body), leading that shrinks as size grows
 - translucent chrome (top bar, sidebar) with backdrop-filter; the sidebar is the heavier material
 - a scroll edge fade under the top bar instead of a hard divider
-- response on pointer-down (press scale in 100 ms), settling motion on a critically damped curve (no bounce)
-- reduced motion / reduced transparency / more contrast are honoured
+- response on pointer-down (100 ms press scale); settling motion on a critically damped curve (no bounce)
+- the tab selector is one capsule with a thumb that slides to the chosen tab (interruptible, it re-targets from where it is)
+- reduced motion, reduced transparency and more contrast are honoured
 """
 
-TOKENS = {
+TOK = {
     'light': {
-        'bg': '#F5F5F7', 'surface': '#FFFFFF', 'surface2': '#F0F0F3', 'ink': '#1D1D1F', 'ink2': '#515154', 'ink3': '#6E6E73',
-        'line': 'rgba(0,0,0,0.09)', 'accent': '#0071E3', 'accent_soft': 'rgba(0,113,227,0.10)',
-        'orange': '#D9480F', 'purple': '#6F42C1', 'grey': '#8E8E93',
-        'chrome': 'rgba(245,245,247,0.72)', 'side': 'rgba(236,236,240,0.78)', 'shadow': '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06)',
-        'warn_bg': 'rgba(217,72,15,0.08)', 'good_bg': 'rgba(0,113,227,0.07)',
+        'bg': '#FBF6EC', 'card': '#FFFFFF', 'border': '#EBE2D0', 'ink': '#2A241C', 'sub': '#8F8471', 'sub_text': '#6F6554',
+        'orange': '#B9743D', 'orange_tint': '#F3E1C8', 'orange_deep': '#9C5F2E',
+        'green': '#2F8F63', 'green_tint': '#D9F0E1', 'coral': '#B76552', 'coral_tint': '#F2DFD7', 'gray_tint': '#EFEAE0',
+        'chrome': 'rgba(251,246,236,0.74)', 'side': 'rgba(246,238,224,0.80)',
+        'shadow': '0 1px 2px rgba(60,40,10,0.05), 0 8px 24px rgba(60,40,10,0.06)',
+        'on_accent': '#FFFFFF',
     },
     'dark': {
-        'bg': '#000000', 'surface': '#1C1C1E', 'surface2': '#2C2C2E', 'ink': '#F5F5F7', 'ink2': '#C7C7CC', 'ink3': '#98989D',
-        'line': 'rgba(255,255,255,0.12)', 'accent': '#0A84FF', 'accent_soft': 'rgba(10,132,255,0.16)',
-        'orange': '#E8590C', 'purple': '#A66BD6', 'grey': '#8E8E93',
-        'chrome': 'rgba(28,28,30,0.72)', 'side': 'rgba(22,22,24,0.80)', 'shadow': '0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.5)',
-        'warn_bg': 'rgba(232,89,12,0.16)', 'good_bg': 'rgba(10,132,255,0.14)',
+        'bg': '#17130E', 'card': '#221C15', 'border': '#3A3226', 'ink': '#F4ECDD', 'sub': '#A89B84', 'sub_text': '#BDB19A',
+        'orange': '#C97B3F', 'orange_tint': '#3A2B1B', 'orange_deep': '#E2A56C',
+        'green': '#4FBF8B', 'green_tint': '#1E3329', 'coral': '#D98A76', 'coral_tint': '#3A2620', 'gray_tint': '#2D261D',
+        'chrome': 'rgba(23,19,14,0.74)', 'side': 'rgba(28,23,17,0.82)',
+        'shadow': '0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.45)',
+        'on_accent': '#FFFFFF',
     },
 }
 
 
 def _vars(t):
-    return (
-        f"--bg:{t['bg']};--surface:{t['surface']};--surface2:{t['surface2']};--ink:{t['ink']};--ink2:{t['ink2']};--ink3:{t['ink3']};"
-        f"--line:{t['line']};--accent:{t['accent']};--accent-soft:{t['accent_soft']};--orange:{t['orange']};--purple:{t['purple']};"
-        f"--grey:{t['grey']};--chrome:{t['chrome']};--side:{t['side']};--shadow:{t['shadow']};--warn-bg:{t['warn_bg']};--good-bg:{t['good_bg']};"
-    )
+    return ''.join(f'--{k.replace("_", "-")}:{v};' for k, v in t.items())
 
 
 CSS = (
     """
 <style>
-:root { """ + _vars(TOKENS['light']) + """
+:root { """ + _vars(TOK['light']) + """
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI Variable", "Segoe UI", Inter, system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
-  --settle: cubic-bezier(0.32, 0.72, 0, 1);  /* critically damped feel: arrives without bounce */
-  --radius: 18px; --radius-s: 12px;
+  --settle: cubic-bezier(0.32, 0.72, 0, 1);   /* critically damped feel: arrives without bounce */
 }
-@media (prefers-color-scheme: dark) { :root { """ + _vars(TOKENS['dark']) + """ } }
+@media (prefers-color-scheme: dark) { :root { """ + _vars(TOK['dark']) + """ } }
 
-html, body, [data-testid="stAppViewContainer"], .stApp {
-  background: var(--bg) !important; color: var(--ink); font-family: var(--font) !important;
-  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; font-optical-sizing: auto;
-}
+html, body, [data-testid="stAppViewContainer"], .stApp { background: var(--bg) !important; color: var(--ink); font-family: var(--font) !important;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; font-optical-sizing: auto; }
 .stApp *:not([data-testid="stIconMaterial"]):not(.material-icons):not([class*="material-symbols"]) { font-family: var(--font); }
-[data-testid="stMain"] .block-container { max-width: 1180px; padding: 5.2rem 2rem 6rem; }
-@media (max-width: 720px) { [data-testid="stMain"] .block-container { padding: 4.6rem 1rem 5rem; } }
+[data-testid="stMain"] .block-container { max-width: 1240px; padding: 4.6rem 2.2rem 5rem; }
+@media (max-width: 720px) { [data-testid="stMain"] .block-container { padding: 4.2rem 1rem 4rem; } }
 
-/* ---------- type: tracking tightens as size grows, leading shrinks as size grows ---------- */
-.stApp p, .stApp li { font-size: 0.94rem; line-height: 1.52; letter-spacing: 0; color: var(--ink2); }
-.stApp h1, .app-title { font-size: 2.35rem; line-height: 1.07; letter-spacing: -0.026em; font-weight: 700; color: var(--ink); margin: 0; }
-.stApp h2, .app-h2 { font-size: 1.5rem; line-height: 1.17; letter-spacing: -0.018em; font-weight: 650; color: var(--ink); margin: 2.4rem 0 0.35rem; }
-.stApp h3, .app-h3 { font-size: 1.1rem; line-height: 1.25; letter-spacing: -0.01em; font-weight: 620; color: var(--ink); margin: 1.4rem 0 0.3rem; }
-.app-caption { font-size: 0.8rem; line-height: 1.45; letter-spacing: 0.008em; color: var(--ink3); }
-.app-eyebrow { font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--ink3); margin-bottom: 0.5rem; }
-.app-lede { font-size: 1.05rem; line-height: 1.45; color: var(--ink2); max-width: 46rem; margin-top: 0.6rem; }
-.app-section-note { color: var(--ink3); font-size: 0.88rem; max-width: 46rem; margin: 0 0 0.9rem; }
-a { color: var(--accent); }
+/* ---------- type ---------- */
+.stApp p, .stApp li { font-size: 0.93rem; line-height: 1.52; letter-spacing: 0; color: var(--ink); }
+.stApp h1 { font-size: 2.1rem; line-height: 1.08; letter-spacing: -0.026em; font-weight: 700; color: var(--ink); }
+.stApp h2 { font-size: 1.32rem; line-height: 1.18; letter-spacing: -0.016em; font-weight: 680; color: var(--ink);
+  border-bottom: 2px solid var(--orange-tint); padding-bottom: 8px; margin: 1.6rem 0 0.7rem; }
+.stApp h3 { font-size: 1.05rem; line-height: 1.25; letter-spacing: -0.008em; font-weight: 650; color: var(--ink); margin: 1.2rem 0 0.4rem; }
+.dc-sub, .dc-note { color: var(--sub-text); }
+.dc-note { font-size: 0.88rem; max-width: 52rem; margin: 0 0 0.9rem; line-height: 1.5; }
+.stApp [data-testid="stCaptionContainer"], .stApp small { color: var(--sub-text); letter-spacing: 0.005em; }
+a { color: var(--orange-deep); }
 
 /* ---------- translucent top bar with a scroll edge fade (no hard divider) ---------- */
-header[data-testid="stHeader"] {
-  background: var(--chrome) !important; -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
-  border-bottom: 0; height: 3.1rem;
-}
-header[data-testid="stHeader"]::after {
-  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 18px; pointer-events: none;
-  background: linear-gradient(to bottom, var(--chrome), transparent);
-  -webkit-mask-image: linear-gradient(to bottom, #000, transparent); mask-image: linear-gradient(to bottom, #000, transparent);
-}
+header[data-testid="stHeader"] { background: var(--chrome) !important; -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
+  border-bottom: 0; height: 3.1rem; }
+header[data-testid="stHeader"]::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 18px; pointer-events: none;
+  background: linear-gradient(to bottom, var(--chrome), transparent); -webkit-mask-image: linear-gradient(to bottom, #000, transparent); mask-image: linear-gradient(to bottom, #000, transparent); }
 [data-testid="stToolbar"], [data-testid="stDecoration"], #MainMenu, footer { visibility: hidden; height: 0; }
 [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] { visibility: visible; }
 
 /* ---------- sidebar: the heavier material ---------- */
-section[data-testid="stSidebar"] {
-  background: var(--side) !important; -webkit-backdrop-filter: blur(40px) saturate(190%); backdrop-filter: blur(40px) saturate(190%);
-  border-right: 1px solid var(--line);
-}
+section[data-testid="stSidebar"] { background: var(--side) !important; -webkit-backdrop-filter: blur(40px) saturate(180%); backdrop-filter: blur(40px) saturate(180%);
+  border-right: 1px solid var(--border); }
 section[data-testid="stSidebar"] > div { padding-top: 0.6rem; }
-section[data-testid="stSidebar"] .block-container, [data-testid="stSidebarUserContent"] { padding: 1.4rem 1.1rem 2rem; }
-.side-brand { display:flex; align-items:center; gap:0.6rem; margin: 0.2rem 0 1.2rem; }
-.side-mark { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(145deg, #4DA3FF, var(--accent)); display:grid; place-items:center; color:#fff; font-weight:700; font-size:0.9rem; box-shadow: 0 2px 6px rgba(0,113,227,0.35); }
-.side-name { font-weight: 650; letter-spacing: -0.012em; color: var(--ink); font-size: 1rem; line-height: 1.1; }
-.side-sub { font-size: 0.74rem; color: var(--ink3); letter-spacing: 0.01em; }
-.side-label { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--ink3); margin: 1.1rem 0 0.35rem; }
+[data-testid="stSidebarUserContent"] { padding: 1.2rem 1.1rem 2rem; }
+section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div { background: var(--card); border: 1px solid var(--border); border-radius: 12px; font-weight: 600; color: var(--ink); }
+section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] svg { color: var(--orange); }
 
-/* ---------- cards ---------- */
-[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"] .card-anchor),
-.card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); }
-.card { padding: 1.15rem 1.3rem; }
-div[data-testid="stVerticalBlockBorderWrapper"] { border-radius: var(--radius); border-color: var(--line); background: var(--surface); box-shadow: var(--shadow); }
-div[data-testid="stVerticalBlockBorderWrapper"] > div { padding: 0.35rem 0.5rem; }
+/* ---------- header bar, pills, cards (names follow the old design_system) ---------- */
+.dc-header { display: flex; align-items: center; justify-content: space-between; padding: 2px 0 18px; flex-wrap: wrap; gap: 14px; }
+.dc-header-left { display: flex; align-items: center; gap: 14px; }
+.dc-header-icon { width: 48px; height: 48px; border-radius: 13px; background: linear-gradient(150deg, #C98550, var(--orange)); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(185,116,61,0.35); }
+.dc-header-title { font-size: 1.45rem; font-weight: 750; letter-spacing: -0.02em; color: var(--ink); line-height: 1.15; }
+.dc-header-subtitle { font-size: 0.84rem; color: var(--sub-text); margin-top: 2px; letter-spacing: 0.002em; }
+.dc-header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dc-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; font-size: 0.84rem; font-weight: 620; white-space: nowrap; letter-spacing: -0.003em; }
+.dc-pill svg { flex-shrink: 0; }
+.dc-pill-orange { background: var(--orange-tint); color: var(--orange-deep); }
+.dc-pill-gray { background: var(--gray-tint); color: var(--ink); }
+.dc-pill-green { background: var(--green-tint); color: var(--green); }
+.dc-pill-coral { background: var(--coral-tint); color: var(--coral); }
 
-/* KPI tiles */
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 1.2rem 0 0.4rem; }
-.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.25rem 1.05rem; box-shadow: var(--shadow);
-  transition: transform .35s var(--settle), box-shadow .35s var(--settle); }
-.kpi:hover { transform: translateY(-2px); }
-.kpi .k-label { font-size: 0.78rem; letter-spacing: 0.01em; color: var(--ink3); font-weight: 560; }
-.kpi .k-value { font-size: 2.6rem; line-height: 1.02; letter-spacing: -0.032em; font-weight: 700; color: var(--ink); margin: 0.35rem 0 0.35rem; font-variant-numeric: tabular-nums; }
-.kpi .k-value small { font-size: 1.2rem; letter-spacing: -0.01em; font-weight: 600; color: var(--ink3); margin-left: 2px; }
-.kpi .k-note { font-size: 0.78rem; line-height: 1.4; color: var(--ink3); }
-.kpi.accent .k-value { color: var(--accent); }
+.dc-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.dc-icon-sq { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.dc-icon-sq-orange { background: var(--orange-tint); color: var(--orange-deep); }
+.dc-icon-sq-green { background: var(--green-tint); color: var(--green); }
+.dc-icon-sq-coral { background: var(--coral-tint); color: var(--coral); }
+.dc-card-title { font-size: 1rem; font-weight: 680; letter-spacing: -0.01em; color: var(--ink); line-height: 1.25; }
+.dc-card-subtitle { font-size: 0.8rem; color: var(--sub-text); margin-top: 1px; }
+.dc-card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 18px 20px; margin-bottom: 14px; box-shadow: var(--shadow); }
+.dc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 0.4rem 0 0.2rem; }
+.dc-grid .dc-card { margin-bottom: 0; }
+.dc-metric { transition: transform .35s var(--settle), box-shadow .35s var(--settle); }
+.dc-metric:hover { transform: translateY(-2px); }
+.dc-metric-top { display: flex; align-items: center; justify-content: space-between; }
+.dc-metric-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; color: var(--sub-text); text-transform: uppercase; }
+.dc-metric-value { font-size: 2.35rem; font-weight: 780; color: var(--ink); margin: 10px 0 4px; line-height: 1; letter-spacing: -0.032em; font-variant-numeric: tabular-nums; }
+.dc-metric-value small { font-size: 1.05rem; letter-spacing: -0.01em; font-weight: 650; color: var(--sub-text); margin-left: 2px; }
+.dc-metric-sub { font-size: 0.78rem; color: var(--sub-text); line-height: 1.4; }
 
-/* callouts */
-.callout { border-radius: var(--radius-s); padding: 0.85rem 1.05rem; margin: 0.8rem 0; font-size: 0.9rem; line-height: 1.5; color: var(--ink2); background: var(--good-bg); border: 1px solid var(--line); }
-.callout.warn { background: var(--warn-bg); }
-.callout b, .callout strong { color: var(--ink); font-weight: 620; }
-.callout .c-title { display:block; color: var(--ink); font-weight: 620; letter-spacing: -0.005em; margin-bottom: 0.15rem; }
+.dc-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 0.5rem 0 0.4rem; }
+.dc-stat { background: var(--gray-tint); border-radius: 14px; padding: 12px 15px; }
+.dc-stat-label { font-size: 0.74rem; color: var(--sub-text); font-weight: 600; letter-spacing: 0.01em; }
+.dc-stat-value { font-size: 1.45rem; letter-spacing: -0.02em; font-weight: 720; color: var(--ink); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.dc-stat-note { font-size: 0.74rem; color: var(--sub-text); line-height: 1.35; }
 
-/* findings list */
-.finding { display:flex; gap: 0.8rem; padding: 0.75rem 0; border-top: 1px solid var(--line); font-size: 0.93rem; line-height: 1.5; color: var(--ink); }
-.finding:first-child { border-top: 0; }
-.finding .f-n { flex: 0 0 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 640; font-size: 0.78rem; display:grid; place-items:center; margin-top: 1px; }
+.dc-callout { border-radius: 14px; padding: 13px 16px; margin: 0.8rem 0; font-size: 0.9rem; line-height: 1.5; color: var(--ink); background: var(--orange-tint); border: 1px solid var(--border); }
+.dc-callout-warn { background: var(--coral-tint); }
+.dc-callout-good { background: var(--green-tint); }
+.dc-callout-title { display: block; font-weight: 680; letter-spacing: -0.005em; margin-bottom: 2px; }
+.dc-finding { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 0.92rem; line-height: 1.5; color: var(--ink); }
+.dc-finding:first-child { border-top: 0; }
+.dc-finding-n { flex: 0 0 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--orange-tint); color: var(--orange-deep); font-weight: 700; font-size: 0.78rem; display: grid; place-items: center; margin-top: 1px; }
 
-/* stat row used on the Weibull page */
-.stat-row { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0.4rem 0 0.2rem; }
-.stat { background: var(--surface2); border-radius: var(--radius-s); padding: 0.75rem 0.95rem; }
-.stat .s-label { font-size: 0.74rem; color: var(--ink3); letter-spacing: 0.01em; font-weight: 560; }
-.stat .s-value { font-size: 1.5rem; letter-spacing: -0.02em; font-weight: 680; color: var(--ink); line-height: 1.15; font-variant-numeric: tabular-nums; }
-.stat .s-note { font-size: 0.74rem; color: var(--ink3); line-height: 1.35; }
+.dc-unit-row { border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; margin-bottom: 6px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; background: var(--card); }
+.dc-unit-name { font-weight: 640; font-size: 0.84rem; color: var(--ink); }
+.dc-unit-loc { font-size: 0.72rem; color: var(--sub-text); margin-top: 3px; display: flex; align-items: center; gap: 4px; }
+.dc-footer { text-align: center; padding: 16px; margin-top: 28px; border-top: 1px solid var(--border); color: var(--sub-text); font-size: 0.78rem; }
+
+/* ---------- tabs: one capsule, the chosen tab is a raised orange thumb that settles in ---------- */
+[data-testid="stTabs"] [role="tablist"] { gap: 2px; background: var(--gray-tint); border-radius: 999px; padding: 4px; position: relative; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; border-bottom: 0; box-shadow: none; }
+[data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
+[data-testid="stTab"] { background: transparent !important; border: 0 !important; border-radius: 999px !important; padding: 8px 13px !important; height: auto; position: relative; white-space: nowrap;
+  transition: background-color .3s var(--settle), color .25s ease, transform 100ms ease-out, box-shadow .35s var(--settle); }
+[data-testid="stTab"] p { font-weight: 620; font-size: 0.82rem; letter-spacing: -0.003em; color: var(--sub-text); margin: 0; }
+[data-testid="stTab"]:hover p { color: var(--ink); }
+[data-testid="stTab"]:active { transform: scale(0.97); }
+[data-testid="stTab"][aria-selected="true"] { background: var(--orange) !important; box-shadow: 0 2px 8px rgba(185,116,61,0.38); animation: settle .4s var(--settle) both; }
+[data-testid="stTab"][aria-selected="true"] p { color: #fff !important; }
+.react-aria-SelectionIndicator, [data-testid="stTab"] .react-aria-SelectionIndicator { display: none !important; }
+[data-testid="stTabs"] [role="tabpanel"] { padding-top: 1.3rem; }
+[data-testid="stTabs"] [data-testid="stTabs"] [data-testid="stTab"] { padding: 6px 14px !important; }
+[data-testid="stTabs"] [data-testid="stTabs"] [data-testid="stTab"] p { font-size: 0.8rem; }
+@keyframes settle { from { transform: scale(0.94); } to { transform: scale(1); } }
 
 /* ---------- controls ---------- */
+.stButton > button, .stDownloadButton > button { border-radius: 999px !important; font-weight: 650; letter-spacing: -0.005em; padding: 0.5rem 1.15rem; border: 1px solid var(--border);
+  background: var(--card); color: var(--ink); transition: transform 100ms ease-out, background-color .2s ease, box-shadow .3s var(--settle); }
 .stButton button p, .stDownloadButton button p { color: inherit; font-size: inherit; line-height: 1.2; font-weight: inherit; letter-spacing: inherit; }
-[data-testid="stButtonGroup"] button p { color: inherit; font-size: inherit; font-weight: inherit; }
+.stButton > button:hover, .stDownloadButton > button:hover { background: var(--orange-tint); border-color: var(--border); color: var(--orange-deep); }
+.stButton > button:active, .stDownloadButton > button:active { transform: scale(0.97); }       /* answer on pointer-down, not on release */
+.stButton > button[kind="primary"] { background: var(--orange); color: #fff; border-color: transparent; box-shadow: 0 2px 8px rgba(185,116,61,0.35); }
 .stButton > button[kind="primary"] p { color: #fff; }
+.stButton > button[kind="primary"]:hover { background: var(--orange); filter: brightness(1.06); color: #fff; }
 .stButton > button:disabled { opacity: 0.45; }
-.stButton > button, .stDownloadButton > button {
-  border-radius: 980px; font-weight: 600; letter-spacing: -0.005em; padding: 0.5rem 1.15rem; border: 1px solid var(--line);
-  background: var(--surface); color: var(--ink); transition: transform 100ms ease-out, background-color .2s ease, box-shadow .3s var(--settle);
-}
-.stButton > button:hover, .stDownloadButton > button:hover { background: var(--surface2); border-color: var(--line); color: var(--ink); }
-.stButton > button:active, .stDownloadButton > button:active { transform: scale(0.97); }     /* answer on pointer-down, not on release */
-.stButton > button[kind="primary"] { background: var(--accent); color: #fff; border-color: transparent; box-shadow: 0 1px 2px rgba(0,113,227,0.35); }
-.stButton > button[kind="primary"]:hover { background: var(--accent); filter: brightness(1.07); color:#fff; }
-.stButton > button:focus-visible, .stDownloadButton > button:focus-visible, [data-baseweb]:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
-
-/* segmented control (page switcher) */
-[data-testid="stButtonGroup"] { gap: 0; background: var(--surface2); border-radius: 980px; padding: 3px; display: inline-flex; flex-wrap: wrap; max-width: 100%; }
-[data-testid="stButtonGroup"] button { border-radius: 980px !important; border: 0 !important; background: transparent !important; color: var(--ink2) !important; font-weight: 580; font-size: 0.86rem; padding: 0.38rem 0.95rem; min-height: 2rem; transition: transform 100ms ease-out, background-color .25s var(--settle), color .2s ease, box-shadow .3s var(--settle); }
-[data-testid="stButtonGroup"] button:active { transform: scale(0.97); }
-[data-testid="stButtonGroup"] button[aria-checked="true"], [data-testid="stButtonGroup"] button[aria-pressed="true"], [data-testid="stButtonGroup"] button[kind$="Active"] {
-  background: var(--surface) !important; color: var(--ink) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.14), 0 0 0 0.5px var(--line); }
-
-/* inputs */
-[data-baseweb="select"] > div, [data-baseweb="input"] > div, .stNumberInput > div > div { border-radius: var(--radius-s) !important; border-color: var(--line) !important; background: var(--surface) !important; }
-[data-testid="stFileUploaderDropzone"] { border-radius: var(--radius); border: 1.5px dashed var(--line); background: var(--surface); transition: border-color .25s var(--settle), background-color .25s var(--settle), transform .25s var(--settle); }
-[data-testid="stFileUploaderDropzone"]:hover { border-color: var(--accent); background: var(--accent-soft); }
-[data-testid="stExpander"] { border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--surface); }
-[data-testid="stExpander"] summary { font-weight: 580; color: var(--ink); }
-.stSlider [role="slider"] { box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
-[data-testid="stProgress"] > div > div > div { background-color: var(--accent); border-radius: 99px; }
+.stButton > button:focus-visible, .stDownloadButton > button:focus-visible { outline: 3px solid var(--orange-tint); outline-offset: 2px; }
+[data-testid="stFileUploaderDropzone"] { background: var(--card); border: 2px dashed var(--border); border-radius: 16px; transition: border-color .25s var(--settle), background-color .25s var(--settle); }
+[data-testid="stFileUploaderDropzone"]:hover { border-color: var(--orange); background: var(--orange-tint); }
+div[data-testid="stExpander"] { background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
+div[data-testid="stExpander"] summary { font-weight: 620; color: var(--ink); }
+.stMultiSelect [data-baseweb="tag"] { background: var(--orange-tint) !important; border-radius: 999px !important; }
+.stMultiSelect [data-baseweb="tag"] span { color: var(--orange-deep) !important; }
+[data-baseweb="select"] > div, [data-baseweb="input"] > div { border-radius: 12px !important; border-color: var(--border) !important; background: var(--card) !important; }
+[data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+[data-testid="stProgress"] > div > div > div { background-color: var(--orange); border-radius: 99px; }
 [data-testid="stProgress"] > div > div { border-radius: 99px; }
-[data-testid="stDataFrame"] { border-radius: var(--radius-s); overflow: hidden; border: 1px solid var(--line); }
-[data-testid="stAlert"] { border-radius: var(--radius-s); }
+[data-testid="stAlert"] { border-radius: 14px; }
+[data-testid="stRadio"] [role="radiogroup"] { gap: 6px; }
 
 /* ---------- arrival: content settles in; never blocks input ---------- */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-[data-testid="stMain"] .block-container > div > div[data-testid="stVerticalBlock"] > div { animation: rise .5s var(--settle) both; }
+[data-testid="stTabs"] [role="tabpanel"] [data-testid="stVerticalBlock"] > div { animation: rise .5s var(--settle) both; }
 
 /* ---------- accessibility ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation: fadein 0.2s ease both !important; }
-  .kpi:hover { transform: none; }
+  .dc-metric:hover { transform: none; }
   @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
 }
 @media (prefers-reduced-transparency: reduce) {
-  header[data-testid="stHeader"], section[data-testid="stSidebar"] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface) !important; }
+  header[data-testid="stHeader"], section[data-testid="stSidebar"] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card) !important; }
   header[data-testid="stHeader"]::after { display: none; }
 }
 @media (prefers-contrast: more) {
-  :root { --line: rgba(128,128,128,0.7); }
-  .kpi, .card, div[data-testid="stVerticalBlockBorderWrapper"] { border-width: 1.5px; }
-  .stApp p, .stApp li, .app-caption { color: var(--ink); }
+  :root { --border: rgba(110,100,84,0.75); }
+  .dc-card, div[data-testid="stExpander"] { border-width: 1.5px; }
+  .dc-note, .dc-card-subtitle, .dc-metric-sub { color: var(--ink); }
 }
 </style>
 """
@@ -5554,12 +5563,30 @@ def mode(st):
         return 'light'
 ''',
 # ====================================================================================================
-# module ui.components
+# module ui.dc
 # ====================================================================================================
-'ui.components': r'''"""Small HTML building blocks. Everything dynamic goes through escape()."""
+'ui.dc': r'''"""Building blocks in the old dashboard's visual language: pills, the header bar, icon-square card heads, metric cards.
+Names (dc_*) follow design_system.py so the two apps read alike. Everything dynamic is escaped."""
 import html
 
 import numpy as np
+
+# Icons: the same line icons the old dashboard used (design_system.py).
+_ICON_LINE_CHART = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8.7 13 14.4l-3.5-3.5L3 18"/></svg>'
+_ICON_BRANCH = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>'
+_ICON_UPLOAD = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+_ICON_TARGET = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>'
+_ICON_CALENDAR_X = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="10" y1="14" x2="14" y2="18"/><line x1="14" y1="14" x2="10" y2="18"/></svg>'
+_ICON_GAUGE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15 15 9"/><path d="M3.5 19a9 9 0 1 1 17 0"/></svg>'
+_ICON_UP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
+_ICON_DOWN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>'
+_ICON_CLOCK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+_ICON_SCALE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M3 3l7.5 7.5"/><path d="M21 3l-7.5 7.5"/><path d="M6 13l-3 6a3 3 0 0 0 6 0z"/><path d="M18 13l-3 6a3 3 0 0 0 6 0z"/><line x1="12" y1="10" x2="12" y2="21"/></svg>'
+_ICON_BAR_CHART = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>'
+_ICON_ALARM = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="M22 6l-3-3"/></svg>'
+_ICON_PIN = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>'
+_ICON_BOLT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>'
+_ICON_WARN = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>'
 
 
 def esc(value):
@@ -5571,7 +5598,7 @@ def fmt_pct(value, digits=1):
 
 
 def fmt_hours(h):
-    """Hours as the reader thinks of them: minutes under an hour, hours under two days, days beyond."""
+    """Hours the way a reader thinks of them: minutes under an hour, hours under two days, days beyond."""
     if h is None or not np.isfinite(h):
         return 'n/a'
     if h < 1:
@@ -5581,58 +5608,68 @@ def fmt_hours(h):
     return f'{h / 24:.1f} days' if h < 24 * 10 else f'{h / 24:.0f} days'
 
 
-def hero(eyebrow, title, lede=None):
-    lede_html = f'<p class="app-lede">{esc(lede)}</p>' if lede else ''
-    return f'<div class="app-eyebrow">{esc(eyebrow)}</div><div class="app-title">{esc(title)}</div>{lede_html}'
+def dc_pill(icon_svg, text, variant='gray'):
+    return f'<span class="dc-pill dc-pill-{variant}">{icon_svg}<span>{esc(text)}</span></span>'
 
 
-def section(title, note=None):
-    note_html = f'<p class="app-section-note">{esc(note)}</p>' if note else ''
-    return f'<div class="app-h2">{esc(title)}</div>{note_html}'
+def dc_header(title, subtitle, pills_html):
+    return (
+        f'<div class="dc-header"><div class="dc-header-left">'
+        f'<div class="dc-header-icon">{_ICON_LINE_CHART}</div>'
+        f'<div><div class="dc-header-title">{esc(title)}</div>'
+        f'<div class="dc-header-subtitle">{esc(subtitle)}</div></div></div>'
+        f'<div class="dc-header-right">{pills_html}</div></div>'
+    )
 
 
-def subsection(title, note=None):
-    note_html = f'<p class="app-section-note">{esc(note)}</p>' if note else ''
-    return f'<div class="app-h3">{esc(title)}</div>{note_html}'
+def dc_card_head(icon_svg, title, subtitle, variant='orange'):
+    return (
+        f'<div class="dc-card-head"><div class="dc-icon-sq dc-icon-sq-{variant}">{icon_svg}</div>'
+        f'<div><div class="dc-card-title">{esc(title)}</div>'
+        f'<div class="dc-card-subtitle">{esc(subtitle)}</div></div></div>'
+    )
 
 
-def kpi_grid(items):
-    """items: list of dict(label, value, unit, note, accent)."""
-    cells = []
-    for it in items:
-        unit = f'<small>{esc(it["unit"])}</small>' if it.get('unit') else ''
-        cells.append(
-            f'<div class="kpi{" accent" if it.get("accent") else ""}"><div class="k-label">{esc(it["label"])}</div>'
-            f'<div class="k-value">{esc(it["value"])}{unit}</div><div class="k-note">{esc(it.get("note", ""))}</div></div>'
-        )
-    return f'<div class="kpi-grid">{"".join(cells)}</div>'
+def dc_metric_card(label, value, sub, icon_svg, variant='orange', unit=''):
+    unit_html = f'<small>{esc(unit)}</small>' if unit else ''
+    return (
+        f'<div class="dc-card dc-metric"><div class="dc-metric-top">'
+        f'<span class="dc-metric-label">{esc(label)}</span>'
+        f'<div class="dc-icon-sq dc-icon-sq-{variant}" style="width:30px;height:30px;">{icon_svg}</div>'
+        f'</div><div class="dc-metric-value">{esc(value)}{unit_html}</div>'
+        f'<div class="dc-metric-sub">{esc(sub)}</div></div>'
+    )
+
+
+def metric_grid(cards):
+    return f'<div class="dc-grid">{"".join(cards)}</div>'
 
 
 def stat_row(items):
     cells = [
-        f'<div class="stat"><div class="s-label">{esc(i["label"])}</div><div class="s-value">{esc(i["value"])}</div>'
-        f'<div class="s-note">{esc(i.get("note", ""))}</div></div>'
+        f'<div class="dc-stat"><div class="dc-stat-label">{esc(i["label"])}</div><div class="dc-stat-value">{esc(i["value"])}</div>'
+        f'<div class="dc-stat-note">{esc(i.get("note", ""))}</div></div>'
         for i in items
     ]
-    return f'<div class="stat-row">{"".join(cells)}</div>'
+    return f'<div class="dc-stat-row">{"".join(cells)}</div>'
 
 
 def callout(text, title=None, tone='info'):
-    head = f'<span class="c-title">{esc(title)}</span>' if title else ''
-    return f'<div class="callout{" warn" if tone == "warn" else ""}">{head}{esc(text)}</div>'
+    head = f'<span class="dc-callout-title">{esc(title)}</span>' if title else ''
+    return f'<div class="dc-callout dc-callout-{tone}">{head}{esc(text)}</div>'
 
 
 def findings_list(findings):
-    rows = [f'<div class="finding"><div class="f-n">{i}</div><div>{esc(text)}</div></div>' for i, text in enumerate(findings, 1)]
-    return f'<div class="card" style="padding:0.4rem 1.3rem">{"".join(rows)}</div>'
+    rows = [f'<div class="dc-finding"><div class="dc-finding-n">{i}</div><div>{esc(t)}</div></div>' for i, t in enumerate(findings, 1)]
+    return f'<div class="dc-card" style="padding:6px 20px">{"".join(rows)}</div>'
 
 
-def brand(name, sub):
-    return f'<div class="side-brand"><div class="side-mark">D</div><div><div class="side-name">{esc(name)}</div><div class="side-sub">{esc(sub)}</div></div></div>'
+def note_card(paragraphs):
+    return '<div class="dc-card">' + ''.join(f'<p>{esc(p)}</p>' for p in paragraphs) + '</div>'
 
 
-def side_label(text):
-    return f'<div class="side-label">{esc(text)}</div>'
+def spacer(px):
+    return f'<div style="height:{px}px"></div>'
 ''',
 # ====================================================================================================
 # module ui.charts
@@ -5641,17 +5678,19 @@ def side_label(text):
 
 Colour rules (dataviz): text is always ink, never the series colour; a legend is always shown for two or more series;
 no dual axes; categories keep a fixed order. The three chromatic slots below passed the palette validator in both modes
-(blue / orange / purple); greys carry the "other" and "before" roles.
+(orange-brown / blue / green); greys carry the "other" and "before" roles.
 """
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
 PAL = {
-    'light': dict(ink='#1D1D1F', ink2='#515154', ink3='#6E6E73', grid='rgba(0,0,0,0.07)', blue='#0071E3', orange='#D9480F',
-                  purple='#6F42C1', grey='#8E8E93', pale='#C7C7CC', paper='rgba(0,0,0,0)', tip='#FFFFFF'),
-    'dark': dict(ink='#F5F5F7', ink2='#C7C7CC', ink3='#98989D', grid='rgba(255,255,255,0.10)', blue='#0A84FF', orange='#E8590C',
-                 purple='#A66BD6', grey='#8E8E93', pale='#48484A', paper='rgba(0,0,0,0)', tip='#2C2C2E'),
+    # light: the old dashboard's cream palette. The three data colours (orange-brown, blue, green) passed the palette validator
+    # together; the brand orange #B9743D is kept for single-series accents and the interface.
+    'light': dict(ink='#2A241C', ink2='#6F6554', ink3='#8F8471', grid='rgba(60,40,10,0.08)', brand='#B9743D', main='#9C5F2E', alt='#3E6FB0',
+                  third='#2F8F63', grey='#8F8471', pale='#D9CFBD', paper='rgba(0,0,0,0)', tip='#FFFFFF', band='rgba(156,95,46,0.18)'),
+    'dark': dict(ink='#F4ECDD', ink2='#BDB19A', ink3='#A89B84', grid='rgba(244,236,221,0.10)', brand='#C97B3F', main='#C97B3F', alt='#4F86CC',
+                 third='#3FA877', grey='#A89B84', pale='#4A4032', paper='rgba(0,0,0,0)', tip='#2D261D', band='rgba(201,123,63,0.28)'),
 }
 FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif'
 CONFIG = {'displayModeBar': False, 'responsive': True, 'scrollZoom': False}
@@ -5707,8 +5746,8 @@ def bridge_waterfall(bridge, mode):
         orientation='h', y=labels, x=values, measure=measures,
         text=[f'{abs(v):,.0f} h' for v in values], textposition='outside', textfont=dict(color=p['ink'], size=12),
         connector=dict(line=dict(color=p['grid'], width=1)),
-        increasing=dict(marker=dict(color=p['blue'])), decreasing=dict(marker=dict(color=p['orange'])),
-        totals=dict(marker=dict(color=p['blue'])),
+        increasing=dict(marker=dict(color=p['main'])), decreasing=dict(marker=dict(color=p['alt'])),
+        totals=dict(marker=dict(color=p['main'])),
         hovertemplate='%{y}<br>%{x:,.0f} hours<extra></extra>',
     ))
     fig.update_yaxes(autorange='reversed', showgrid=False)
@@ -5728,10 +5767,10 @@ def availability_dots(units_overall, short, mode):
         fig.add_shape(type='line', y0=r['name'], y1=r['name'], x0=r['Calendar Availability (%)'], x1=r['Availability (%)'],
                       line=dict(color=p['pale'], width=3), layer='below')
     fig.add_trace(go.Scatter(x=d['Calendar Availability (%)'], y=d['name'], mode='markers', name='Calendar Availability (against the time base)',
-                             marker=dict(color=p['orange'], size=11, line=dict(color=p['paper'] if False else p['tip'], width=1.5)),
+                             marker=dict(color=p['alt'], size=11, line=dict(color=p['paper'] if False else p['tip'], width=1.5)),
                              hovertemplate='%{y}<br>Calendar Availability %{x:.1f}%<extra></extra>'))
     fig.add_trace(go.Scatter(x=d['Availability (%)'], y=d['name'], mode='markers+text', name='Availability (against planned production time)',
-                             marker=dict(color=p['blue'], size=13, line=dict(color=p['tip'], width=1.5)),
+                             marker=dict(color=p['main'], size=13, line=dict(color=p['tip'], width=1.5)),
                              text=[f'{v:.1f}%' for v in d['Availability (%)']], textposition='middle right', textfont=dict(color=p['ink'], size=12),
                              hovertemplate='%{y}<br>Availability %{x:.1f}%<extra></extra>'))
     fig.update_xaxes(range=[max(0, lo - 4), min(101, d['Availability (%)'].max() + 5)], ticksuffix='%')
@@ -5744,10 +5783,10 @@ def monthly_lines(units_monthly, unit, mode):
     d = units_monthly[units_monthly['Unit'] == unit]
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=d['Month'], y=d['Availability (%)'], mode='lines+markers', name='Availability',
-                             line=dict(color=p['blue'], width=2.6, shape='spline', smoothing=0.5), marker=dict(size=7),
+                             line=dict(color=p['main'], width=2.6, shape='spline', smoothing=0.5), marker=dict(size=7),
                              hovertemplate='%{x}<br>Availability %{y:.1f}%<extra></extra>'))
     fig.add_trace(go.Scatter(x=d['Month'], y=d['Calendar Availability (%)'], mode='lines+markers', name='Calendar Availability',
-                             line=dict(color=p['orange'], width=2.2, dash='dot', shape='spline', smoothing=0.5), marker=dict(size=6),
+                             line=dict(color=p['alt'], width=2.2, dash='dot', shape='spline', smoothing=0.5), marker=dict(size=6),
                              hovertemplate='%{x}<br>Calendar Availability %{y:.1f}%<extra></extra>'))
     fig.update_yaxes(ticksuffix='%')
     return _base(fig, mode, height=340)
@@ -5762,7 +5801,7 @@ def themes_bar(themes, mode, top=12):
     waiting = d['Waiting_hours'].to_numpy()
     stops = (d['Hours'].to_numpy() - planned - waiting).clip(min=0)
     fig = go.Figure()
-    for values, name, color in ((stops, 'Stops and other unplanned', p['blue']), (waiting, 'Waiting', p['purple']), (planned, 'Planned', p['grey'])):
+    for values, name, color in ((stops, 'Stops and other unplanned', p['main']), (waiting, 'Waiting', p['third']), (planned, 'Planned', p['grey'])):
         fig.add_trace(go.Bar(y=d['Theme'], x=values, orientation='h', name=name, marker_color=color,
                              hovertemplate='%{y}<br>' + name + ' %{x:,.1f} h<extra></extra>'))
     fig.update_layout(barmode='stack', legend=dict(traceorder='normal'))
@@ -5776,9 +5815,9 @@ def coverage_bars(coverage, short, mode):
     p = PAL[mode]
     cols = [(c, color) for c, color in zip(
         ['Planned (%)', 'Equipment or process themes (%)', 'Waiting or supply (%)', None, 'No theme (%)'],
-        [p['grey'], p['blue'], p['purple'], p['orange'], p['pale']])]
+        [p['grey'], p['main'], p['third'], p['alt'], p['pale']])]
     vague = [c for c in coverage.columns if c.startswith('Vague')][0]
-    cols[3] = (vague, p['orange'])
+    cols[3] = (vague, p['alt'])
     names = {'Planned (%)': 'Planned', 'Equipment or process themes (%)': 'Equipment or process', 'Waiting or supply (%)': 'Waiting or supply',
              vague: 'Vague (Unknown, Minor stops, Not clearly identified)', 'No theme (%)': 'No theme matched'}
     y = [short.get(u, u) for u in coverage.index]
@@ -5796,15 +5835,15 @@ def pareto_bars(pareto, mode, top=12):
     """Biggest reasons with the running share of unplanned hours in the label (one axis, no second scale)."""
     p = PAL[mode]
     d = pareto.head(top).iloc[::-1]
-    colors = [p['purple'] if w else p['blue'] for w in d['waiting']]
+    colors = [p['third'] if w else p['main'] for w in d['waiting']]
     fig = go.Figure(go.Bar(
         y=d['Reason'], x=d['hours'], orientation='h', marker_color=colors, showlegend=False, name='Reasons',
         text=[f'{h:,.0f} h  |  {c:.0f}% cumulative' for h, c in zip(d['hours'], d['cumulative_pct'])], textposition='outside',
         textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
         customdata=np.stack([d['events'], d['source']], axis=1),
         hovertemplate='%{y}<br>%{x:,.1f} h, %{customdata[0]:,.0f} events<br>blamed on: %{customdata[1]}<extra></extra>'))
-    fig.add_trace(go.Bar(y=[None], x=[None], orientation='h', name='Waiting', marker_color=p['purple']))
-    fig.add_trace(go.Bar(y=[None], x=[None], orientation='h', name='Stops and other unplanned', marker_color=p['blue']))
+    fig.add_trace(go.Bar(y=[None], x=[None], orientation='h', name='Waiting', marker_color=p['third']))
+    fig.add_trace(go.Bar(y=[None], x=[None], orientation='h', name='Stops and other unplanned', marker_color=p['main']))
     fig.update_yaxes(tickmode='array', tickvals=list(d['Reason']), ticktext=[_wrap(t, 32) for t in d['Reason']], showgrid=False)
     fig.update_xaxes(title_text='Hours', range=[0, d['hours'].max() * 1.45])
     return _base(fig, mode, height=max(320, 40 * len(d) + 120), margin=dict(l=8, r=30, t=10, b=8))
@@ -5816,9 +5855,9 @@ def two_views_bars(two_views, mode):
     d = two_views.iloc[::-1]
     fig = go.Figure()
     fig.add_trace(go.Bar(y=d['Source'], x=d["From the unit's OWN log, unplanned (hrs)"], orientation='h', name="From the unit's own log",
-                         marker_color=p['blue'], hovertemplate='%{y}<br>own log %{x:,.0f} h<extra></extra>'))
+                         marker_color=p['main'], hovertemplate='%{y}<br>own log %{x:,.0f} h<extra></extra>'))
     fig.add_trace(go.Bar(y=d['Source'], x=d['From Roaster COMMENTS (hrs)'], orientation='h', name='From Roaster comments',
-                         marker_color=p['orange'], hovertemplate='%{y}<br>Roaster comments %{x:,.0f} h<extra></extra>'))
+                         marker_color=p['alt'], hovertemplate='%{y}<br>Roaster comments %{x:,.0f} h<extra></extra>'))
     fig.update_layout(barmode='group', bargap=0.3)
     fig.update_xaxes(title_text='Hours')
     fig.update_yaxes(showgrid=False)
@@ -5831,7 +5870,7 @@ def forecast_hist(own, wait, days, mode):
     p = PAL[mode]
     total = np.asarray(own) + np.asarray(wait)
     p10, p50, p90 = np.percentile(total, [10, 50, 90])
-    fig = go.Figure(go.Histogram(x=total, nbinsx=48, marker=dict(color=p['blue'], line=dict(color=p['tip'], width=0.5)), opacity=0.9,
+    fig = go.Figure(go.Histogram(x=total, nbinsx=48, marker=dict(color=p['main'], line=dict(color=p['tip'], width=0.5)), opacity=0.9,
                                  hovertemplate='%{x:.0f} h: %{y} of the simulated runs<extra></extra>', name='Simulated runs'))
     top = 1.0
     for value, name, dash in ((p10, 'P10', 'dot'), (p50, 'P50', 'solid'), (p90, 'P90', 'dot')):
@@ -5853,7 +5892,7 @@ def scenario_ranges(headline_forecast, unit, mode):
         fig.add_shape(type='line', y0=r['Scenario'], y1=r['Scenario'], x0=r['Availability P10 (%)'], x1=r['Availability P90 (%)'],
                       line=dict(color=p['pale'], width=10), layer='below')
     fig.add_trace(go.Scatter(x=d['Availability P50 (%)'], y=d['Scenario'], mode='markers+text', name='Most likely (P50)',
-                             marker=dict(color=p['blue'], size=15, line=dict(color=p['tip'], width=2)),
+                             marker=dict(color=p['main'], size=15, line=dict(color=p['tip'], width=2)),
                              text=[f'{v:.1f}%' for v in d['Availability P50 (%)']], textposition='top center', textfont=dict(color=p['ink'], size=12),
                              customdata=np.stack([d['Availability P10 (%)'], d['Availability P90 (%)']], axis=1),
                              hovertemplate='%{y}<br>P50 %{x:.1f}%<br>P10 %{customdata[0]:.1f}% to P90 %{customdata[1]:.1f}%<extra></extra>'))
@@ -5881,7 +5920,7 @@ def backtest_ratio(backtest, short, mode):
     ratio = d['Actual (scaled, hrs)'] / p50
     fig.add_trace(go.Scatter(
         x=ratio, y=d['name'], mode='markers+text', name='What actually happened',
-        marker=dict(color=np.where(within, p['blue'], p['orange']), size=14, symbol='diamond', line=dict(color=p['tip'], width=1.5)),
+        marker=dict(color=np.where(within, p['third'], p['main']), size=14, symbol='diamond', line=dict(color=p['tip'], width=1.5)),
         text=d['Verdict'], textposition='middle right', textfont=dict(color=p['ink'], size=12),
         customdata=np.stack([d['Actual (scaled, hrs)'], d['Forecast P10'], d['Forecast P50'], d['Forecast P90']], axis=1),
         hovertemplate='%{y}<br>Actual %{customdata[0]:,.0f} h<br>Forecast P10 %{customdata[1]:,.0f}, P50 %{customdata[2]:,.0f}, P90 %{customdata[3]:,.0f} h<extra></extra>'))
@@ -5926,24 +5965,24 @@ def unit_survival(W, mode, mark_hours=None, tmax=None):
     fig = go.Figure()
     upper, lower = _surv(t, c['low'], beta), _surv(t, c['high'], beta)
     fig.add_trace(go.Scatter(x=x, y=upper, mode='lines', line=dict(width=0), hoverinfo='skip', showlegend=False))
-    fig.add_trace(go.Scatter(x=x, y=lower, mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(0,113,227,0.16)' if mode == 'light' else 'rgba(10,132,255,0.24)',
+    fig.add_trace(go.Scatter(x=x, y=lower, mode='lines', line=dict(width=0), fill='tonexty', fillcolor=p['band'],
                              name='Likely range (10th to 90th percentile)', hoverinfo='skip'))
     fig.add_trace(go.Scatter(x=x, y=_surv(t, c['Before'], beta), mode='lines', name='Before: planned time still counted as running',
                              line=dict(color=p['grey'], width=2, dash='dash'),
                              hovertemplate='Before<br>%{y:.0f}% still running at %{x:.1f} ' + unit_name + '<extra></extra>'))
     if W.planned > 0.5:
         fig.add_trace(go.Scatter(x=x, y=_surv(t, c['Planned removed'], beta), mode='lines', name='Planned time taken out',
-                                 line=dict(color=p['purple'], width=2, dash='dot'),
+                                 line=dict(color=p['third'], width=2, dash='dot'),
                                  hovertemplate='Planned removed<br>%{y:.0f}% still running at %{x:.1f} ' + unit_name + '<extra></extra>'))
     fig.add_trace(go.Scatter(x=x, y=_surv(t, c['After'], beta), mode='lines', name='After: running time only',
-                             line=dict(color=p['blue'], width=3.2),
+                             line=dict(color=p['main'], width=3.2),
                              hovertemplate='After<br>%{y:.0f}% still running at %{x:.1f} ' + unit_name + '<extra></extra>'))
     _survival_axes(fig, unit_name)
     if mark_hours is not None and 0 < mark_hours <= tmax:
         s = float(_surv(mark_hours, c['After'], beta))
         fig.add_vline(x=mark_hours / div, line=dict(color=p['ink'], width=1.3))
         fig.add_trace(go.Scatter(x=[mark_hours / div], y=[s], mode='markers+text', showlegend=False, text=[f'{s:.0f}%'], textposition='top right',
-                                 textfont=dict(color=p['ink'], size=14), marker=dict(color=p['blue'], size=13, line=dict(color=p['tip'], width=2.5)),
+                                 textfont=dict(color=p['ink'], size=14), marker=dict(color=p['main'], size=13, line=dict(color=p['tip'], width=2.5)),
                                  hoverinfo='skip'))
     return _base(fig, mode, height=410, margin=dict(l=8, r=18, t=14, b=8)), unit_name
 
@@ -5951,7 +5990,7 @@ def unit_survival(W, mode, mark_hours=None, tmax=None):
 def cause_survival(W, groups, mode, tmax=None):
     """The biggest identified causes, each on its own colour: solid = After, thin dashed = Before."""
     p = PAL[mode]
-    colors = [p['blue'], p['orange'], p['purple']]
+    colors = [p['main'], p['alt'], p['third']]
     beta = W.beta
     cs = [g['c After'] for _, g in groups.iterrows()] + [g['c Before'] for _, g in groups.iterrows()]
     tmax = tmax or curve_limit(cs, beta)
@@ -5977,7 +6016,7 @@ def units_median_dots(table, short, mode):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=d['Median run After (h)'], y=d['name'], mode='markers+text', name='Median run (After)',
-        marker=dict(color=p['blue'], size=13, line=dict(color=p['tip'], width=1.5)),
+        marker=dict(color=p['main'], size=13, line=dict(color=p['tip'], width=1.5)),
         error_x=dict(type='data', symmetric=False, array=(d['Median After high (h)'] - d['Median run After (h)']).clip(lower=0),
                      arrayminus=(d['Median run After (h)'] - d['Median After low (h)']).clip(lower=0), color=p['pale'], thickness=5, width=0),
         text=[_hours_label(v) for v in d['Median run After (h)']], textposition='top center', textfont=dict(color=p['ink'], size=12),
@@ -6002,24 +6041,86 @@ def _hours_label(h):
     if h < 48:
         return f'{h:.1f} h'
     return f'{h / 24:.1f} d'
+
+
+# ---------------------------------------------------------------------------------------------- strategy and attribution
+def attribution_bars(attribution, mode):
+    """Hours of Roaster comments by the unit or source they blame."""
+    p = PAL[mode]
+    d = attribution.sort_values('Total_Duration_hours').copy()
+    fig = go.Figure(go.Bar(
+        y=d['Allocated_To'], x=d['Total_Duration_hours'], orientation='h', marker_color=p['brand'], name='Hours',
+        text=[f'{h:,.0f} h  |  {s:.0f}%' for h, s in zip(d['Total_Duration_hours'], d['Pct_of_Total'])], textposition='outside',
+        textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
+        customdata=np.stack([d['Total_Count'], d['Avg_Mins_per_Event']], axis=1),
+        hovertemplate='%{y}<br>%{x:,.1f} h, %{customdata[0]:,.0f} events<br>average %{customdata[1]:.1f} min per event<extra></extra>'))
+    fig.update_yaxes(tickmode='array', tickvals=list(d['Allocated_To']), ticktext=[_wrap(t, 28) for t in d['Allocated_To']], showgrid=False)
+    fig.update_xaxes(title_text='Hours of Roaster comments', range=[0, d['Total_Duration_hours'].max() * 1.35])
+    return _base(fig, mode, height=max(280, 40 * len(d) + 100), legend=False, margin=dict(l=8, r=30, t=10, b=8))
+
+
+def improvement_bars(improvement, mode, top=10):
+    """Availability gain (percentage points) if a whole group of unplanned downtime disappeared."""
+    p = PAL[mode]
+    label = 'Group' if 'Group' in improvement.columns else 'Allocated_To'
+    d = improvement.sort_values('Availability gain (pp)', ascending=False).head(top).iloc[::-1]
+    fig = go.Figure(go.Bar(
+        y=d[label], x=d['Availability gain (pp)'], orientation='h', marker_color=p['brand'], name='Availability gain',
+        text=[f'+{g:.1f} pp' for g in d['Availability gain (pp)']], textposition='outside', textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
+        customdata=np.stack([d['Total_Duration_hours'], d['Share of unplanned (%)']], axis=1),
+        hovertemplate='%{y}<br>Availability +%{x:.2f} pp<br>%{customdata[0]:,.0f} h, %{customdata[1]:.0f}% of unplanned<extra></extra>'))
+    fig.update_yaxes(tickmode='array', tickvals=list(d[label]), ticktext=[_wrap(t, 28) for t in d[label]], showgrid=False)
+    fig.update_xaxes(title_text='Availability gain if this group disappeared (percentage points)', range=[0, d['Availability gain (pp)'].max() * 1.3])
+    return _base(fig, mode, height=max(280, 40 * len(d) + 100), legend=False, margin=dict(l=8, r=30, t=10, b=8))
 ''',
 # ====================================================================================================
-# module ui.pages
+# module ui.tabs
 # ====================================================================================================
-'ui.pages': r'''"""The seven pages (plus the plant comparison). Each render_* takes the analysis from engine.runner.run_line."""
+'ui.tabs': r'''"""The tabs, in the old dashboard's order and names, filled from the new notebook engine.
+
+Old tab                    -> here
+OEE & Data Integrity       -> Availability & Integrity (Availability, Calendar Availability, Utilization; checks)
+Roaster Attribution        -> Roaster Attribution (comments blamed on units; lines that have a Roaster log only)
+Strategy & Improvement     -> Strategy & Improvement (what fixing a group is worth; planned-share sensitivity; findings)
+Theme Breakdown            -> Theme Breakdown (how much of each log is understood; themes and the reasons behind them)
+Own Reason Logs            -> Own Reason Logs (each unit's own biggest reasons; own log against Roaster comments)
+Raw Logs                   -> Raw Logs (every reason row with how it was classed)
+Predictive Analytics       -> Predictive Analytics (Monte Carlo forecast, backtest, time between stops)
+Report Export              -> Report Export (Excel and PDF)
+"""
 import numpy as np
 import pandas as pd
 import streamlit as st
 
 from engine import core, runner
 from . import charts
-from .components import (callout, esc, findings_list, fmt_hours, fmt_pct, hero, kpi_grid, section, stat_row, subsection)
+from . import dc
+from .dc import (_ICON_BAR_CHART, _ICON_BOLT, _ICON_CALENDAR_X, _ICON_CLOCK, _ICON_GAUGE, _ICON_SCALE, _ICON_TARGET, _ICON_UPLOAD, _ICON_ALARM,
+                 callout, dc_card_head, dc_metric_card, esc, findings_list, fmt_hours, fmt_pct, metric_grid, note_card, stat_row)
 
-PAGES = ['Overview', 'Units', 'Causes', 'Forecast', 'Time between stops', 'Findings', 'Checks']
+
+def tab_names(a):
+    names = ['Availability & Integrity']
+    if a.L.attribution:
+        names.append('Roaster Attribution')
+    names += ['Strategy & Improvement', 'Theme Breakdown', 'Own Reason Logs', 'Raw Logs', 'Predictive Analytics', 'Report Export']
+    return names
 
 
 # ---------------------------------------------------------------------------------------------- helpers
-def show(df, key=None, height='auto', index=False):
+def md(html):
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def h2(text):
+    st.markdown(f'## {text}')
+
+
+def note(text):
+    md(f'<p class="dc-note">{esc(text)}</p>')
+
+
+def show(df, height='auto', index=False):
     """Interactive table, numbers rounded to one decimal."""
     if df is None or len(df) == 0:
         st.caption('Nothing to show for this view.')
@@ -6028,23 +6129,19 @@ def show(df, key=None, height='auto', index=False):
     for col in d.columns:
         if pd.api.types.is_float_dtype(d[col]):
             d[col] = d[col].round(1)
-    st.dataframe(d, hide_index=not index, width='stretch', height=height, key=key)
+    st.dataframe(d, hide_index=not index, width='stretch', height=height)
 
 
 def chart(fig, key):
     st.plotly_chart(fig, width='stretch', config=charts.CONFIG, key=key)
 
 
-def pick(label, options, key, fmt=None, default=0):
+def pick(label, options, key, fmt=None):
     """Select box that keeps its answer across reruns and falls back if the options change."""
     options = list(options)
     if st.session_state.get(key) not in options:
-        st.session_state[key] = options[default]
+        st.session_state[key] = options[0]
     return st.selectbox(label, options, key=key, format_func=fmt or (lambda x: x))
-
-
-def short_of(a):
-    return a.L.short
 
 
 def table_for(a, name, unit=None, column='Unit'):
@@ -6056,6 +6153,10 @@ def table_for(a, name, unit=None, column='Unit'):
     return t.reset_index(drop=True)
 
 
+def short_of(a):
+    return a.L.short
+
+
 def headline_unit(a, key):
     units = list(a.L.headline)
     if len(units) == 1:
@@ -6063,77 +6164,148 @@ def headline_unit(a, key):
     return st.radio('Unit', units, key=key, horizontal=True, format_func=lambda u: short_of(a).get(u, u), label_visibility='collapsed')
 
 
-# ---------------------------------------------------------------------------------------------- overview
-def render_overview(a, mode):
+def own_pareto(L, unit):
+    """Biggest unplanned reasons in the unit's own log, with the running share of unplanned hours."""
+    log = L.logs[unit]
+    un = log[log['Class'] == 'Unplanned loss']
+    if not len(un):
+        return pd.DataFrame()
+    g = (un.groupby('Reason', as_index=False)
+         .agg(hours=('Duration_hours', 'sum'), events=('Count', 'sum'), waiting=('Waiting', 'max'))
+         .sort_values('hours', ascending=False).reset_index(drop=True))
+    g['cumulative_pct'] = g['hours'].cumsum() / g['hours'].sum() * 100
+    g['source'] = L.short.get(unit, unit)
+    return g
+
+
+# ---------------------------------------------------------------------------------------------- Availability & Integrity
+def render_integrity(a, mode):
     L = a.L
+    md(dc_card_head(_ICON_GAUGE, 'Availability, Calendar Availability and Utilization',
+                    'Overall window figures. The reason logs carry no dates, so there is no day-by-day version.'))
     unit = headline_unit(a, f'ov_unit_{a.line_key}')
     M = L.metrics[unit]
-    pm_label = runner.PLANNED_MAINTENANCE_LABELS[a.options['planned_maintenance']]
-    st.markdown(kpi_grid([
-        dict(label='Availability', value=fmt_pct(M.availability), unit='%', accent=True,
-             note=f'Running time divided by planned production time. Over {M.days} days.'),
-        dict(label='Calendar Availability', value=fmt_pct(M.calendar_availability), unit='%',
-             note='Running time divided by the full time base.'),
-        dict(label='Utilization', value=fmt_pct(M.utilization), unit='%',
-             note='Planned production time divided by the time base.'),
-    ]), unsafe_allow_html=True)
-    pm_hours = M.pm
-    if pm_hours and pm_hours > 0:
-        st.markdown(callout(
-            f'{pm_hours:,.0f} h of planned maintenance is {pm_label.lower()}. You can switch this in the sidebar settings and run again.',
-            title='Planned maintenance'), unsafe_allow_html=True)
+    md(metric_grid([
+        dc_metric_card('Availability', fmt_pct(M.availability), f'Running time / planned production time. {M.days} days.', _ICON_GAUGE, 'orange', '%'),
+        dc_metric_card('Calendar Availability', fmt_pct(M.calendar_availability), 'Running time / the full time base.', _ICON_CLOCK, 'green', '%'),
+        dc_metric_card('Utilization', fmt_pct(M.utilization), 'Planned production time / the time base.', _ICON_BAR_CHART, 'coral', '%'),
+    ]))
+    pm_label = runner.PLANNED_MAINTENANCE_LABELS[a.options['planned_maintenance']].lower()
+    if M.pm and M.pm > 0:
+        md(callout(f'{M.pm:,.0f} h of planned maintenance is {pm_label}. Change this under Analysis Settings in the sidebar and run again.',
+                   title='Planned maintenance'))
 
-    st.markdown(section('Where the hours go', 'Every hour of the window, from the calendar down to the time the unit was actually running.'),
-                unsafe_allow_html=True)
+    h2('Where the hours go')
+    note('Every hour of the window, from the calendar down to the time the unit was actually running.')
     bridge = table_for(a, 'bridge', unit)
     if len(bridge):
         chart(charts.bridge_waterfall(bridge, mode), f'bridge_{a.line_key}_{unit}')
     cols = st.columns(2)
     with cols[0]:
-        st.markdown(subsection('How the downtime is counted', 'Planned, unplanned and waiting come from the wording of each reason.'), unsafe_allow_html=True)
+        st.markdown('### How the downtime is counted')
+        note('Planned, unplanned and waiting come from the wording of each reason.')
         show(table_for(a, 'class_table', unit).drop(columns=['Unit'], errors='ignore'))
     with cols[1]:
-        st.markdown(subsection('What if the planned share is different?', 'A small guide to how far Availability could move.'), unsafe_allow_html=True)
+        st.markdown('### What if the planned share is different?')
+        note('A guide to how far Availability could move.')
         show(table_for(a, 'sensitivity', unit).drop(columns=['Unit'], errors='ignore'))
-    if a.L.findings:
-        st.markdown(section('The short version'), unsafe_allow_html=True)
-        st.markdown(findings_list(a.L.findings[:4]), unsafe_allow_html=True)
 
-
-# ---------------------------------------------------------------------------------------------- units
-def render_units(a, mode):
-    L = a.L
-    st.markdown(section('Every unit side by side', 'Availability counts only planned production time. Calendar Availability counts the whole time base.'),
-                unsafe_allow_html=True)
+    h2('Every unit side by side')
     overall = table_for(a, 'units_overall')
     if len(overall):
         chart(charts.availability_dots(overall, short_of(a), mode), f'avail_{a.line_key}')
         show(overall)
     monthly = table_for(a, 'units_monthly')
     if len(monthly):
-        st.markdown(section('Month by month'), unsafe_allow_html=True)
-        unit = pick('Unit', monthly['Unit'].unique(), f'mo_unit_{a.line_key}', fmt=lambda u: short_of(a).get(u, u))
-        chart(charts.monthly_lines(monthly, unit, mode), f'monthly_{a.line_key}_{unit}')
+        st.markdown('### Month by month')
+        mu = pick('Unit', monthly['Unit'].unique(), f'mo_unit_{a.line_key}', fmt=lambda u: short_of(a).get(u, u))
+        chart(charts.monthly_lines(monthly, mu, mode), f'monthly_{a.line_key}_{mu}')
         with st.expander('Monthly table'):
-            show(monthly[monthly['Unit'] == unit].drop(columns=['Unit']))
+            show(monthly[monthly['Unit'] == mu].drop(columns=['Unit']))
+
+    h2('Data integrity')
+    md(dc_card_head(_ICON_UPLOAD, 'Load check', 'The daily sheet and each reason log, checked rather than trusted'))
+    st.markdown('### Daily sheet')
+    show(table_for(a, 'daily_checks'))
+    st.markdown('### Reason logs')
+    note('Log hours should match the daily downtime closely.')
+    show(table_for(a, 'log_checks'))
     integrity = table_for(a, 'integrity')
     if len(integrity):
         with st.expander('Do neighbouring units move together?'):
-            st.caption('Daily downtime of each unit compared with the reference unit. A high correlation means the units stop together, '
+            st.caption('Daily downtime of each unit against the reference unit. A high correlation means the units stop together, '
                        'for example because one waits on another.')
             show(integrity)
+    with st.expander('Reasons counted as planned'):
+        show(table_for(a, 'rules_review_planned'))
+    with st.expander('Reasons counted as waiting'):
+        show(table_for(a, 'rules_review_waiting'))
 
 
-# ---------------------------------------------------------------------------------------------- causes
-def render_causes(a, mode):
+# ---------------------------------------------------------------------------------------------- Roaster Attribution
+def render_attribution(a, mode):
+    L = a.L
+    md(dc_card_head(_ICON_TARGET, 'Roaster comments, by the unit they blame',
+                    'The Roaster log names the unit that held it up. Unattributable means the comment names no unit.'))
+    attribution = table_for(a, 'A_attribution')
+    if len(attribution):
+        chart(charts.attribution_bars(attribution, mode), f'attr_{a.line_key}')
+        with st.expander('Table'):
+            show(attribution)
+    pareto = table_for(a, 'A_attributed_pareto')
+    if len(pareto):
+        h2('Biggest reasons in the Roaster log')
+        note('Green bars are waiting, brown bars are stops and other unplanned time. The share in each label is cumulative.')
+        chart(charts.pareto_bars(pareto, mode), f'pareto_{a.line_key}')
+    two = table_for(a, 'C_two_views')
+    if len(two):
+        h2('Roaster comments against each unit\'s own log')
+        note('Each unit\'s own log records far more than the Roaster comments blame on it. They are two views of the same time, not a mistake.')
+        chart(charts.two_views_bars(two, mode), f'twoviews_{a.line_key}')
+        with st.expander('Tables'):
+            show(two)
+            show(table_for(a, 'C_theme_comparison'))
+
+
+# ---------------------------------------------------------------------------------------------- Strategy & Improvement
+def render_strategy(a, mode):
+    L = a.L
+    md(dc_card_head(_ICON_SCALE, 'What fixing a group would be worth',
+                    'Availability gain is the rise in Availability if all the unplanned downtime in that group disappeared.'))
+    improvement = table_for(a, 'A_attributed_improvement')
+    if not len(improvement):
+        improvement = table_for(a, 'own_improvement')
+    if len(improvement):
+        label = 'Group' if 'Group' in improvement.columns else 'Allocated_To'
+        if 'Unit' in improvement.columns and improvement['Unit'].nunique() > 1:
+            u = pick('Unit', improvement['Unit'].unique(), f'imp_unit_{a.line_key}', fmt=lambda x: short_of(a).get(x, x))
+            improvement = improvement[improvement['Unit'] == u]
+        chart(charts.improvement_bars(improvement, mode), f'imp_{a.line_key}_{improvement["Unit"].iloc[0] if "Unit" in improvement else ""}')
+        with st.expander('Table'):
+            show(improvement.drop(columns=['Unit'], errors='ignore'))
+    h2('How far Availability could move')
+    unit = headline_unit(a, f'st_unit_{a.line_key}') if len(L.headline) > 1 else L.headline[0]
+    show(table_for(a, 'sensitivity', unit).drop(columns=['Unit'], errors='ignore'))
+    h2('What the numbers say')
+    note('Written from the tables in this run, in plain language.')
+    if L.findings:
+        md(findings_list(L.findings))
+    else:
+        st.caption('No findings were produced for this run.')
+
+
+# ---------------------------------------------------------------------------------------------- Theme Breakdown
+def render_themes(a, mode):
     L = a.L
     short = short_of(a)
-    st.markdown(section('How much of each log is understood', 'Share of each unit\'s logged hours by kind of reason. '
-                        'Vague reasons are kept apart on purpose: they say a unit stopped, not why.'), unsafe_allow_html=True)
+    md(dc_card_head(_ICON_TARGET, 'How much of each log is understood',
+                    'Vague reasons are kept apart on purpose: they say a unit stopped, not why.'))
     if len(L.coverage):
         chart(charts.coverage_bars(L.coverage, short, mode), f'cov_{a.line_key}')
-    st.markdown(section('Themes in a unit\'s own log'), unsafe_allow_html=True)
-    units = [u for u in L.by_unit_themes]
+        with st.expander('Table'):
+            show(L.coverage.reset_index())
+    h2('Themes in a unit\'s own log')
+    units = list(L.by_unit_themes)
     unit = pick('Unit', units, f'th_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
     themes = L.by_unit_themes[unit]
     chart(charts.themes_bar(themes, mode), f'themes_{a.line_key}_{unit}')
@@ -6142,61 +6314,92 @@ def render_causes(a, mode):
         theme = st.selectbox('See the reasons behind a theme', list(themes.index), key=f'th_theme_{a.line_key}_{unit}')
         show(reasons[reasons['Theme'] == theme][['Reason', 'Hours', 'Events', '% of theme', 'Waiting']])
 
-    pareto = table_for(a, 'A_attributed_pareto')
-    own_pareto = table_for(a, 'own_pareto')
-    if len(pareto):
-        st.markdown(section('Biggest reasons, as the Roaster log blames them',
-                            'Roaster comments name the unit at fault. Purple bars are waiting, blue bars are stops.'), unsafe_allow_html=True)
-        chart(charts.pareto_bars(pareto, mode), f'pareto_{a.line_key}')
-    elif len(own_pareto):
-        st.markdown(section('Biggest reasons in the unit\'s log', 'Purple bars are waiting, blue bars are stops and other unplanned time.'),
-                    unsafe_allow_html=True)
-        pu = pick('Unit ', own_pareto['Unit'].unique(), f'pa_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
-        chart(charts.pareto_bars(own_pareto[own_pareto['Unit'] == pu].reset_index(drop=True), mode), f'pareto_{a.line_key}_{pu}')
-    improvement = table_for(a, 'A_attributed_improvement')
-    if not len(improvement):
-        improvement = table_for(a, 'own_improvement')
-    if len(improvement):
-        with st.expander('What fixing each group would be worth'):
-            st.caption('Availability gain is the rise in Availability if all the unplanned downtime in that group disappeared.')
-            show(improvement)
 
+# ---------------------------------------------------------------------------------------------- Own Reason Logs
+def render_own_logs(a, mode):
+    L = a.L
+    short = short_of(a)
+    md(dc_card_head(_ICON_UPLOAD, 'Each unit\'s own reason log', 'Biggest unplanned reasons, with the running share of unplanned hours.'))
+    units = [u for u in L.logged]
+    unit = pick('Unit', units, f'ol_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
+    pareto = own_pareto(L, unit)
+    if len(pareto):
+        note('Green bars are waiting, brown bars are stops and other unplanned time.')
+        chart(charts.pareto_bars(pareto, mode), f'ownpareto_{a.line_key}_{unit}')
+        with st.expander('Table'):
+            show(pareto.drop(columns=['source']))
+    else:
+        st.caption('This unit has no unplanned reasons in its log.')
     two = table_for(a, 'C_two_views')
     if len(two):
-        st.markdown(section('Roaster comments against each unit\'s own log',
-                            'The Roaster log names the unit that held it up. Each unit\'s own log records far more. They are different views, not a mistake.'),
-                    unsafe_allow_html=True)
-        chart(charts.two_views_bars(two, mode), f'twoviews_{a.line_key}')
-        with st.expander('Tables'):
-            show(two)
-            show(table_for(a, 'C_theme_comparison'))
+        h2('Own log against Roaster comments')
+        note('The same unit seen two ways: what the Roaster comments blame on it, and what its own log records.')
+        chart(charts.two_views_bars(two, mode), f'olviews_{a.line_key}')
 
 
-# ---------------------------------------------------------------------------------------------- forecast
+# ---------------------------------------------------------------------------------------------- Raw Logs
+def render_raw(a, mode):
+    L = a.L
+    short = short_of(a)
+    md(dc_card_head(_ICON_UPLOAD, 'Raw reason logs', 'Every reason row, with how the wording rules classed it.'))
+    unit = pick('Unit', L.logged, f'raw_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
+    log = L.logs[unit]
+    c1, c2 = st.columns([1, 1.4])
+    with c1:
+        classes = st.multiselect('Counted as', sorted(log['Class'].unique()), default=sorted(log['Class'].unique()), key=f'raw_cls_{a.line_key}_{unit}')
+    with c2:
+        query = st.text_input('Search the reason', key=f'raw_q_{a.line_key}_{unit}', placeholder='for example: jam')
+    d = log[log['Class'].isin(classes)]
+    if query.strip():
+        d = d[d['Reason'].astype(str).str.contains(query.strip(), case=False, regex=False)]
+    st.caption(f'{len(d):,} of {len(log):,} rows. {d["Duration_hours"].sum():,.1f} h.')
+    show(d.sort_values('Duration_hours', ascending=False), height=420)
+    st.download_button('Download these rows (CSV)', d.to_csv(index=False).encode('utf-8'), file_name=f'{L.tag}_{short.get(unit, unit)}_reasons.csv',
+                       mime='text/csv', key=f'raw_dl_{a.line_key}_{unit}')
+    with st.expander('Daily downtime for this unit'):
+        daily = L.dfs.get(unit)
+        if daily is not None:
+            show(daily)
+
+
+# ---------------------------------------------------------------------------------------------- Predictive Analytics
+def render_predictive(a, mode):
+    import os
+    names = ['Monte Carlo forecast', 'Backtest', 'Time between stops']
+    try:
+        parts = st.tabs(names, key=f'pred_tabs_{a.line_key}', on_change='rerun')
+    except TypeError:
+        parts = st.tabs(names)
+    eager = bool(os.environ.get('DOWNTIME_APP_EAGER'))
+    for part, fn in zip(parts, (render_forecast, render_backtest, render_weibull)):
+        if eager or getattr(part, 'open', True):
+            with part:
+                fn(a, mode)
+
+
 def render_forecast(a, mode):
     L = a.L
     short = short_of(a)
     days = int(a.options['forecast_days'])
-    st.markdown(section(f'The next {days} days',
-                        'A Monte Carlo forecast: 10,000 possible months built from how often each reason happened and how long it lasted. '
-                        'It predicts how many unplanned hours to expect, not when a stop will happen.'), unsafe_allow_html=True)
+    md(dc_card_head(_ICON_ALARM, f'The next {days} days',
+                    f'{int(a.options["n_trials"]):,} possible periods built from how often each reason happened and how long it lasted.'))
+    note('It predicts how many unplanned hours to expect, not when a stop will happen. Planned and unplanned are told apart by the wording of the reasons.')
     units = [u for u in L.logged if u in L.forecast_sims]
     unit = pick('Unit', units, f'fc_unit_{a.line_key}', fmt=lambda u: short.get(u, u))
     own, wait = L.forecast_sims[unit]
     total = own + wait
     p10, p50, p90 = np.percentile(total, [10, 50, 90])
-    st.markdown(stat_row([
-        dict(label='Unplanned hours, most likely', value=f'{p50:,.0f} h', note='Half of the simulated months were lower, half higher (P50).'),
-        dict(label='Good case', value=f'{p10:,.0f} h', note='Only 1 in 10 months was this low or lower (P10).'),
-        dict(label='Bad case', value=f'{p90:,.0f} h', note='Only 1 in 10 months was this high or higher (P90).'),
+    md(stat_row([
+        dict(label='Unplanned hours, most likely', value=f'{p50:,.0f} h', note='Half of the simulated periods were lower, half higher (P50).'),
+        dict(label='Good case', value=f'{p10:,.0f} h', note='Only 1 in 10 periods was this low or lower (P10).'),
+        dict(label='Bad case', value=f'{p90:,.0f} h', note='Only 1 in 10 periods was this high or higher (P90).'),
         dict(label='Of the most likely, waiting', value=f'{np.percentile(wait, 50):,.0f} h', note='Waiting on other units or on supply.'),
-    ]), unsafe_allow_html=True)
+    ]))
     chart(charts.forecast_hist(own, wait, days, mode), f'fhist_{a.line_key}_{unit}')
-
     hf = table_for(a, 'headline_forecast')
     if len(hf):
-        st.markdown(section('Availability over the same period', 'The range moves a little with how much planned time is booked. P50 is the most likely value.'),
-                    unsafe_allow_html=True)
+        h2('Availability over the same period')
+        note('The range moves a little with how much planned time is booked. P50 is the most likely value.')
         hu = pick('Headline unit', hf['Unit'].unique(), f'fc_head_{a.line_key}', fmt=lambda u: short.get(u, u))
         chart(charts.scenario_ranges(hf, hu, mode), f'fscen_{a.line_key}_{hu}')
         with st.expander('Scenario table'):
@@ -6204,21 +6407,23 @@ def render_forecast(a, mode):
     with st.expander('Forecast for every unit'):
         show(table_for(a, 'forecast_units'))
 
+
+def render_backtest(a, mode):
     bt = table_for(a, 'backtest_units')
-    if len(bt):
-        st.markdown(section('Was the forecast right? The backtest',
-                            f'The last {int(a.options["backtest_days"])} days were held back, forecast from the days before, and compared with what happened. '
-                            'Each unit is scaled so its forecast P50 is 1.0.'), unsafe_allow_html=True)
-        chart(charts.backtest_ratio(bt, short, mode), f'bt_{a.line_key}')
-        st.markdown(callout('A diamond inside the grey bar means the forecast covered what happened. Orange diamonds fell outside. '
-                            'The reason log has no dates, so the forecast learns from the same days it is tested on; treat a pass as '
-                            'a sanity check, not a guarantee.', title='How far to trust it', tone='warn'), unsafe_allow_html=True)
-        with st.expander('Backtest tables'):
-            show(bt)
-            show(table_for(a, 'backtest_total'))
+    md(dc_card_head(_ICON_BOLT, 'Was the forecast right?',
+                    f'The last {int(a.options["backtest_days"])} days were held back, forecast from the days before, and compared with what happened.'))
+    if not len(bt):
+        st.caption('No backtest for this run.')
+        return
+    note('Each unit is scaled so its forecast P50 is 1.0. A diamond inside the grey bar means the forecast covered what happened.')
+    chart(charts.backtest_ratio(bt, short_of(a), mode), f'bt_{a.line_key}')
+    md(callout('The reason log has no dates, so the forecast learns from the same days it is tested on. Treat a pass as a sanity check, not a guarantee.',
+               title='How far to trust it', tone='warn'))
+    with st.expander('Backtest tables'):
+        show(bt)
+        show(table_for(a, 'backtest_total'))
 
 
-# ---------------------------------------------------------------------------------------------- weibull
 def _vague_share(W):
     g = W.groups
     if not len(g):
@@ -6230,16 +6435,15 @@ def render_weibull(a, mode):
     L = a.L
     short = short_of(a)
     units = [u for u in L.units if u in L.logs]
-    st.markdown(section('Time between stops',
-                        'How long a unit is likely to run before it next stops, built from how often each cause stopped it. '
-                        'Shown before and after taking planned time out of the running time.'), unsafe_allow_html=True)
+    md(dc_card_head(_ICON_CLOCK, 'Time between stops',
+                    'How long a unit is likely to run before it next stops, before and after taking planned time out of the running time.'))
     with st.expander('How to read this'):
         st.markdown(
             '- The curve is the **chance the unit is still running without a stop** after a given continuous run. It starts at 100% and falls.\n'
             '- Where it crosses **50%** is the median run: half of runs last longer, half stop sooner. It is not a 50% chance of breakdown today.\n'
             '- **Before** counts planned time as running time, which flatters the unit. **After** uses only the time it was really running.\n'
             '- The **whole-unit curve** answers "when will this unit next stop?". The **cause curves** show which cause is behind the stops.\n'
-            '- The shape setting says whether stops become more likely the longer a run lasts. 1 means no wear-out, above 1 means a rising chance. '
+            '- The shape says whether stops become likelier the longer a run lasts. 1 means no wear-out, above 1 a rising chance. '
             'It is an assumption here, because the reason logs carry no time stamps for single stops.')
     c1, c2, c3 = st.columns([1.2, 1.4, 1.6])
     with c1:
@@ -6249,34 +6453,30 @@ def render_weibull(a, mode):
                          help='1.0: stops are random. Above 1: the longer it runs, the likelier a stop.')
     with c3:
         identified = st.toggle('Identified causes only', key=f'wb_ident_{a.line_key}',
-                               help='Leaves Unknown, Minor stops and Not clearly identified out of the whole-unit curve. '
-                                    'Their hours still leave the running time.')
+                               help='Leaves Unknown, Minor stops and Not clearly identified out of the whole-unit curve. Their hours still leave the running time.')
     view = 'own'
     if unit == L.reference and L.attribution:
-        view = 'A_attributed' if st.radio('View', ['Own log', 'Roaster comments blamed on units'], horizontal=True, key=f'wb_view_{a.line_key}',
-                                          label_visibility='collapsed') != 'Own log' else 'own'
+        pick_view = st.radio('View', ['Own log', 'Roaster comments blamed on units'], horizontal=True, key=f'wb_view_{a.line_key}', label_visibility='collapsed')
+        view = 'own' if pick_view == 'Own log' else 'A_attributed'
     leave = runner.vague_causes() if identified else ()
     W = runner.weibull_live(a, unit, view, beta, leave)
     if W.curves is None or W.running <= 0:
-        st.markdown(callout(W.summary.get('Evidence', 'Not enough stops to draw a curve.'), title='No curve for this view', tone='warn'),
-                    unsafe_allow_html=True)
+        md(callout(W.summary.get('Evidence', 'Not enough stops to draw a curve.'), title='No curve for this view', tone='warn'))
         return
     s = W.summary
     vague = _vague_share(W)
     if vague > 0.5 and not identified:
-        st.markdown(callout(f'{vague * 100:.0f}% of the counted stops are Unknown, Minor or Not clearly identified. They set the pace here. '
-                            'Switch on "Identified causes only" to see the run time with the unclear stops left out.',
-                            title='Most stops are unclear', tone='warn'), unsafe_allow_html=True)
+        md(callout(f'{vague * 100:.0f}% of the counted stops are Unknown, Minor or Not clearly identified. They set the pace here. '
+                   'Switch on "Identified causes only" to see the run time with the unclear stops left out.', title='Most stops are unclear', tone='warn'))
     med = float(s['Median run After (h)'])
-    st.markdown(stat_row([
+    md(stat_row([
         dict(label='Median run, after', value=fmt_hours(med), note=f'Likely range {fmt_hours(s["Median After low (h)"])} to {fmt_hours(s["Median After high (h)"])}.'),
         dict(label='Median run, before', value=fmt_hours(s['Median run Before (h)']), note='Planned time counted as running.'),
         dict(label='Planned time taken out', value=f'{W.planned:,.0f} h', note=f'{s["Planned (% of log window)"]:.1f}% of the window.'),
         dict(label='Counted stops', value=f'{s["Own stops"]:,.0f}', note=f'{W.running:,.0f} h of running time.'),
-    ]), unsafe_allow_html=True)
-
-    # whole-unit curve with a reader the user can drag
-    st.markdown(subsection('The whole unit', 'All counted causes together, assumed to act independently.'), unsafe_allow_html=True)
+    ]))
+    st.markdown('### The whole unit')
+    note('All counted causes together, assumed to act independently. Drag the reader to see the chance at any running time.')
     hours_max = float(max(charts.curve_limit([W.curves['After'], W.curves['Before']], W.beta), 1e-3))
     div, scale_name = charts.time_scale(hours_max)
     top = hours_max / div
@@ -6286,35 +6486,32 @@ def render_weibull(a, mode):
         st.session_state[key] = default
     reading = st.slider(f'Read the curve at a running time ({scale_name})', float(top / 200), float(top), step=float(top / 400), key=key)
     mark = reading * div
-    fig, unit_name = charts.unit_survival(W, mode, mark_hours=mark)
+    fig, _ = charts.unit_survival(W, mode, mark_hours=mark)
     chart(fig, f'wb_unit_{a.line_key}_{unit}_{view}')
     c = W.curves['After']
     now = float(np.exp(-c * mark ** W.beta))
     nxt = float(np.exp(-c * (mark + 24) ** W.beta) / max(now, 1e-12)) if now > 0 else 0.0
-    st.markdown(callout(
-        f'After {fmt_hours(mark)} of continuous running, there is a {now * 100:.0f}% chance the unit has not stopped yet. '
-        f'Of the runs that get that far, about {nxt * 100:.0f}% go on for another 24 hours without a stop.',
-        title='Reading it at your chosen time'), unsafe_allow_html=True)
+    md(callout(f'After {fmt_hours(mark)} of continuous running, there is a {now * 100:.0f}% chance the unit has not stopped yet. '
+               f'Of the runs that get that far, about {nxt * 100:.0f}% go on for another 24 hours without a stop.', title='Reading it at your chosen time'))
     prob = [(d, float(np.exp(-c * (24 * d) ** W.beta)) * 100) for d in core.PROBABILITY_DAYS]
     st.caption('Chance of a run of this length without a stop:  ' + '   '.join(f'{d} day{"s" if d > 1 else ""}: {v:.0f}%' for d, v in prob))
 
     groups = W.groups[W.groups['Kind'] == 'Identified cause'].head(3)
     if len(groups):
-        st.markdown(subsection('Which causes stop it', 'The three biggest identified causes. Solid is after planned time is taken out, thin dashed is before.'),
-                    unsafe_allow_html=True)
+        st.markdown('### Which causes stop it')
+        note('The three biggest identified causes. Solid is after planned time is taken out, thin dashed is before.')
         fig2, _ = charts.cause_survival(W, groups, mode)
         chart(fig2, f'wb_cause_{a.line_key}_{unit}_{view}')
     with st.expander('All causes in a table'):
         show(core.group_table(W))
     with st.expander('How sensitive is this to the shape?'):
         sens = {f'Shape {b:g}': s.get(f'Median After, shape {b:g} (h)') for b in core.SHAPE_SENSITIVITY}
-        st.caption(f'Median run, after, if the shape were different. The shape fitted from the daily data is '
+        st.caption(f'Median run, after, if the shape were different. Fitted from the daily data: '
                    f'{"n/a" if pd.isna(s["Shape fitted"]) else format(s["Shape fitted"], ".2f")}. The setting above is {W.beta:g}.')
         show(pd.DataFrame([sens]))
 
-    # every unit
-    st.markdown(section('All units', 'Median continuous run before each unit stops, after taking planned time out. Dots are medians, bars the likely range.'),
-                unsafe_allow_html=True)
+    h2('All units')
+    note('Median continuous run before each unit stops, after taking planned time out. Dots are medians, bars the likely range.')
     all_w = runner.weibull_all(a, beta, leave)
     rows = [w.summary for w in all_w.values() if w.curves is not None and w.running > 0]
     if rows:
@@ -6329,10 +6526,10 @@ def render_weibull(a, mode):
                'Hours and counts are scaled to the daily downtime totals so the running time adds up to the calendar.')
 
 
-# ---------------------------------------------------------------------------------------------- findings
+# ---------------------------------------------------------------------------------------------- Report Export
 CAVEATS = [
     'Availability, Calendar Availability and Utilization are overall window figures, because the reason logs carry no dates.',
-    'Planned, unplanned and waiting are decided only from the wording of each reason. Check the Checks page for the reasons that were borderline.',
+    'Planned, unplanned and waiting are decided only from the wording of each reason. The Availability & Integrity tab lists the reasons counted as planned or waiting.',
     'Days left blank in the daily sheet count as running time.',
     'The forecast and the time-between-stops curves assume past patterns hold. Unknown, Minor stops and Not clearly identified are never guessed into a cause.',
     'The Weibull shape is an assumption. The logs have no time stamps for single stops, so the shape cannot be measured from them.',
@@ -6340,52 +6537,28 @@ CAVEATS = [
 ]
 
 
-def render_findings(a, mode):
-    st.markdown(section('What the numbers say', 'Written from the tables in this run, in plain language.'), unsafe_allow_html=True)
-    if a.L.findings:
-        st.markdown(findings_list(a.L.findings), unsafe_allow_html=True)
-    else:
-        st.caption('No findings were produced for this run.')
-    st.markdown(section('What to keep in mind'), unsafe_allow_html=True)
-    st.markdown('<div class="card" style="padding:0.9rem 1.3rem 0.5rem">' + ''.join(f'<p>{esc(c)}</p>' for c in CAVEATS) + '</div>',
-                unsafe_allow_html=True)
-
-
-# ---------------------------------------------------------------------------------------------- checks
-def render_checks(a, mode):
+def render_export(a, mode, plant, build_pdf, excel_bytes, key):
     L = a.L
-    st.markdown(section('Checks on the workbook', 'These show whether the file was read the way you expect.'), unsafe_allow_html=True)
-    if a.errors:
-        for step, error in a.errors.items():
-            st.markdown(callout(f'{step}: {error}', title='A section did not finish', tone='warn'), unsafe_allow_html=True)
-    else:
-        st.markdown(callout('Every section finished without an error.', title='Run status'), unsafe_allow_html=True)
-    st.markdown(subsection('Daily sheet'), unsafe_allow_html=True)
-    show(table_for(a, 'daily_checks'))
-    st.markdown(subsection('Reason logs', 'Log hours should match the daily downtime closely.'), unsafe_allow_html=True)
-    show(table_for(a, 'log_checks'))
-    with st.expander('Reasons counted as planned'):
-        show(table_for(a, 'rules_review_planned'))
-    with st.expander('Reasons counted as waiting'):
-        show(table_for(a, 'rules_review_waiting'))
-    with st.expander('Engine notes'):
-        for step, text in a.notes.items():
-            if text.strip():
-                st.markdown(f'**{step}**')
-                st.code(text.strip(), language=None)
-    st.caption(f'File: {a.file_name}.  Run took {a.seconds:.0f} seconds.')
-
-
-# ---------------------------------------------------------------------------------------------- plant
-def render_plant(analyses, mode):
-    summary = runner.plant_summary(analyses)
-    st.markdown(section('The plant', 'The headline unit of every line you have analysed. Lines differ in planned time and wording, so compare with care.'),
-                unsafe_allow_html=True)
-    if summary is None or not len(summary):
-        st.caption('Run at least one line to see this.')
-        return
-    show(summary)
-    return summary
+    md(dc_card_head(_ICON_UPLOAD, 'Report export', 'An Excel workbook of every table, and a PDF with the key numbers, tables and charts.'))
+    c1, c2 = st.columns(2)
+    with c1:
+        st.download_button('Download Excel workbook', excel_bytes, file_name=f'{L.tag}_results.xlsx',
+                           mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', width='stretch', key=f'dl_x_{key}')
+    with c2:
+        pdf_key = f'pdf_{key}'
+        if pdf_key in st.session_state:
+            st.download_button('Download PDF report', st.session_state[pdf_key], file_name=f'{L.tag}_report.pdf', mime='application/pdf',
+                               width='stretch', key=f'dl_p_{key}')
+        elif st.button('Prepare PDF report', width='stretch', key=f'prep_{key}'):
+            with st.spinner('Building the report'):
+                st.session_state[pdf_key] = build_pdf()
+            st.rerun()
+    if plant is not None and len(plant):
+        h2('Plant comparison')
+        note('The headline unit of every line run in this session. Lines differ in planned time and wording, so compare with care.')
+        show(plant)
+    h2('What to keep in mind')
+    md(note_card(CAVEATS))
 ''',
 # ====================================================================================================
 # module ui.report
@@ -6402,9 +6575,9 @@ from PIL import Image
 
 from engine import runner
 
-INK = (29, 29, 31)
-GREY = (110, 110, 115)
-BLUE = (0, 113, 227)
+INK = (42, 36, 28)
+GREY = (143, 132, 113)
+BLUE = (185, 116, 61)  # brand orange from the dashboard palette
 
 _REPLACE = {'–': '-', '—': '-', '‘': "'", '’': "'", '“': '"', '”': '"', '…': '...', ' ': ' ',
             '→': '->', '≤': '<=', '≥': '>=', '≈': '~', '×': 'x', '−': '-', '•': '-'}
@@ -6492,7 +6665,7 @@ class Report(FPDF):
         y = self.get_y()
         for i, (label, value, note) in enumerate(items):
             x = self.l_margin + i * (width + 3)
-            self.set_fill_color(245, 245, 247)
+            self.set_fill_color(251, 246, 236)
             self.rect(x, y, width, 25, style='F')
             self.set_xy(x + 3, y + 2.5)
             self.set_font('Helvetica', '', 8)
@@ -6540,7 +6713,7 @@ class Report(FPDF):
         self.set_font('Helvetica', '', size)
         self.set_text_color(*INK)
         with self.table(col_widths=widths, text_align='LEFT', line_height=4.2, borders_layout='HORIZONTAL_LINES',
-                        headings_style=FontFace(emphasis='BOLD', fill_color=(245, 245, 247)), padding=0.6) as table:
+                        headings_style=FontFace(emphasis='BOLD', fill_color=(251, 246, 236)), padding=0.6) as table:
             head = table.row()
             for c in df.columns:
                 head.cell(clean(c))
@@ -6628,14 +6801,25 @@ import traceback
 import streamlit as st
 
 from engine import configs, runner
-from ui import components as C
-from ui import pages, report, theme
+from ui import dc, report, tabs, theme
+from ui.dc import (_ICON_BOLT, _ICON_BRANCH, _ICON_CALENDAR_X, _ICON_GAUGE, _ICON_PIN, _ICON_TARGET, _ICON_UPLOAD, _ICON_WARN,
+                   dc_card_head, dc_header, dc_pill)
 
-st.set_page_config(page_title='Line Downtime', page_icon=':material/monitoring:', layout='wide', initial_sidebar_state='expanded')
+APP_NAME = 'Downtime & Availability Intelligence'
+APP_SUB = 'Barry Callebaut Ghana · Cocoa Processing'
+LOGO, FAVICON = 'logo.png', 'favicon_barry.jpg'
+
+st.set_page_config(page_title=APP_NAME, page_icon=FAVICON if os.path.exists(FAVICON) else ':material/monitoring:', layout='wide')
 theme.inject(st)
 MODE = theme.mode(st)
-
 MAX_STORED = 8
+EAGER = bool(os.environ.get('DOWNTIME_APP_EAGER'))  # test hook: build every tab on every run
+
+
+def show_logo_if_present():
+    """A missing logo must never crash the page, so it is skipped silently."""
+    if os.path.exists(LOGO):
+        st.image(LOGO, width='stretch')
 
 
 @st.cache_resource
@@ -6665,9 +6849,10 @@ def _run(line, data, name, options, holder):
         analysis = runner.run_line(line, data, name, options, progress=lambda f, label: bar.progress(min(f, 1.0), text=label))
     except Exception as error:
         bar.empty()
-        holder.markdown(C.callout(
+        holder.markdown(dc.callout(
             f'The file opened, but the layout for {line} was not found. Check that it is the daily and reason log workbook for this line, '
-            f'with the same sheet names and columns as before. (Detail: {type(error).__name__}: {error})', title='This workbook could not be read', tone='warn'), unsafe_allow_html=True)
+            f'with the same sheet names and columns as before. (Detail: {type(error).__name__}: {error})',
+            title='This workbook could not be read', tone='warn'), unsafe_allow_html=True)
         with holder.expander('Technical detail'):
             st.code(traceback.format_exc())
         return key, None
@@ -6682,45 +6867,52 @@ if dev and 'dev_loaded' not in st.session_state:
     st.session_state.dev_loaded = True
     st.session_state.runs = {}
     for item in dev.split(';'):
-        line, path = item.split('|', 1)
-        with open(path, 'rb') as handle:
-            data = handle.read()
-        opts = dict(runner.DEFAULT_OPTIONS)
-        key, analysis = _run(line, data, os.path.basename(path), opts, st.empty())
-        if analysis is not None:
-            st.session_state.runs[line] = key
-            st.session_state.line = line
+        dev_line, dev_path = item.split('|', 1)
+        with open(dev_path, 'rb') as handle:
+            dev_data = handle.read()
+        dev_key, dev_analysis = _run(dev_line, dev_data, os.path.basename(dev_path), dict(runner.DEFAULT_OPTIONS), st.empty())
+        if dev_analysis is not None:
+            st.session_state.runs[dev_line] = dev_key
+            st.session_state.line = dev_line
 st.session_state.setdefault('runs', {})
 
-# ------------------------------------------------------------------------------ sidebar
-with st.sidebar:
-    st.markdown(C.brand('Line Downtime', 'Barry Callebaut Ghana, Tema'), unsafe_allow_html=True)
-    st.markdown(C.side_label('Line'), unsafe_allow_html=True)
-    line = st.selectbox('Line', list(configs.LINES), key='line', label_visibility='collapsed')
-    st.markdown(C.side_label('Workbook'), unsafe_allow_html=True)
-    upload = st.file_uploader('Workbook', type=['xlsx', 'xlsm'], key=f'up_{line}', label_visibility='collapsed',
-                              help='The daily and reason-log workbook for this line.')
-    with st.expander('Settings'):
-        pm = st.radio('Planned maintenance', list(runner.PLANNED_MAINTENANCE_LABELS), index=0, key='opt_pm',
-                      format_func=lambda k: runner.PLANNED_MAINTENANCE_LABELS[k],
-                      help='Left out: maintenance hours leave both the time base and the downtime. Planned stop: they stay in the time base.')
-        march = st.toggle('Leave out March', value=False, key='opt_march', help='Skips the March window defined for this line.')
-        fdays = st.slider('Forecast days', 7, 90, runner.DEFAULT_OPTIONS['forecast_days'], key='opt_fdays')
-        bdays = st.slider('Backtest days', 7, 60, runner.DEFAULT_OPTIONS['backtest_days'], key='opt_bdays')
-        beta = st.slider('Weibull shape', 0.8, 3.0, runner.DEFAULT_OPTIONS['weibull_beta'], 0.1, key='opt_beta',
-                         help='Starting shape for the time-between-stops curves. You can change it again on that page without a new run.')
-        trials = st.select_slider('Simulated months', [2000, 5000, 10000, 20000], value=10000, key='opt_trials')
-    options = dict(planned_maintenance=pm, exclude_march=march, forecast_days=fdays, backtest_days=bdays, weibull_beta=beta, n_trials=trials)
-    run = st.button('Run analysis', type='primary', disabled=upload is None, width='stretch', key='run')
+# ------------------------------------------------------------------------------ sidebar (same cards as the old dashboard)
+st.sidebar.markdown(dc_card_head(_ICON_BRANCH, 'Line Setup', 'Configure the analysis source'), unsafe_allow_html=True)
+st.sidebar.markdown(dc.spacer(6), unsafe_allow_html=True)
+line = st.sidebar.selectbox('Select line', list(configs.LINES), key='line', label_visibility='collapsed')
+cfg = configs.LINES[line]
+st.sidebar.caption(f'Cocoa primary processing · {len(cfg["daily"])} units')
 
-# ------------------------------------------------------------------------------ main
+st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_UPLOAD, 'Upload Downtime Log', 'Drag and drop the .xlsx file'), unsafe_allow_html=True)
+upload = st.sidebar.file_uploader('Upload Downtime Log (.xlsx)', type=['xlsx', 'xlsm'], key=f'up_{line}', label_visibility='collapsed')
+
+st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_CALENDAR_X, 'Exclude Month(s)', 'Drop a known bad-data window'), unsafe_allow_html=True)
+march = st.sidebar.toggle('Exclude March', value=False, key='opt_march',
+                          help=f'Skips the March window defined for this line ({cfg["march_start"]} to {cfg["march_end"]}). Off by default.')
+
+with st.sidebar.expander('Analysis Settings'):
+    pm = st.radio('Planned maintenance', list(runner.PLANNED_MAINTENANCE_LABELS), index=0, key='opt_pm',
+                  format_func=lambda k: runner.PLANNED_MAINTENANCE_LABELS[k],
+                  help='Left out: maintenance hours leave both the time base and the downtime. Planned stop: they stay in the time base.')
+    fdays = st.slider('Forecast days', 7, 90, runner.DEFAULT_OPTIONS['forecast_days'], key='opt_fdays')
+    bdays = st.slider('Backtest days', 7, 60, runner.DEFAULT_OPTIONS['backtest_days'], key='opt_bdays')
+    beta = st.slider('Weibull shape', 0.8, 3.0, runner.DEFAULT_OPTIONS['weibull_beta'], 0.1, key='opt_beta',
+                     help='Starting shape for the time-between-stops curves. It can be changed again on that tab without a new run.')
+    trials = st.select_slider('Simulated periods', [2000, 5000, 10000, 20000], value=10000, key='opt_trials')
+options = dict(planned_maintenance=pm, exclude_march=march, forecast_days=fdays, backtest_days=bdays, weibull_beta=beta, n_trials=trials)
+
+st.sidebar.markdown(dc.spacer(14), unsafe_allow_html=True)
+run_clicked = st.sidebar.button('▶ Run Analysis', type='primary', width='stretch', disabled=upload is None, key='run')
+
+# ------------------------------------------------------------------------------ run gate: analysis starts on an explicit click
 holder = st.container()
-if run and upload is not None:
+if run_clicked and upload is not None:
     data = upload.getvalue()
-    key, analysis = _run(line, data, upload.name, options, holder)
-    if analysis is not None:
-        st.session_state.runs[line] = key
-        st.session_state.page = 'Overview'
+    run_key, fresh = _run(line, data, upload.name, options, holder)
+    if fresh is not None:
+        st.session_state.runs[line] = run_key
 
 current_key = st.session_state.runs.get(line)
 analysis = _store().get(current_key) if current_key else None
@@ -6728,56 +6920,82 @@ if current_key and analysis is None:
     st.session_state.runs.pop(line, None)  # fell out of the store
 
 if analysis is None:
-    holder.markdown(C.hero('Availability, forecast, time between stops', line,
-                           'Choose a line, drop in its workbook and run the analysis. Nothing leaves this computer.'), unsafe_allow_html=True)
-    holder.markdown(C.kpi_grid([
-        dict(label='1  Choose', value='Line', note='The five lines use their own sheet layouts and wording rules.'),
-        dict(label='2  Drop in', value='Workbook', note='The daily sheet and the reason log for that line.'),
-        dict(label='3  Run', value='About 15 s', note='Every section is built from the same engine as the notebook.'),
-    ]), unsafe_allow_html=True)
+    show_logo_if_present()
+    holder.markdown(dc_header(APP_NAME, APP_SUB, dc_pill(_ICON_BRANCH, line, 'orange')), unsafe_allow_html=True)
+    if upload is None:
+        holder.info('Upload a downtime log Excel file in the sidebar to begin.')
+    else:
+        holder.info(f'**{upload.name}** is ready. Click **▶ Run Analysis** in the sidebar to begin.')
     st.stop()
 
-# a gentle nudge when the sidebar settings no longer match the run on screen
+# ------------------------------------------------------------------------------ after a run
+L = analysis.L
 stale = {k: v for k, v in options.items() if analysis.options.get(k) != v}
 with st.sidebar:
     if stale:
-        st.caption('Settings changed since this run. Press Run analysis to apply them.')
-    st.markdown(C.side_label('Download'), unsafe_allow_html=True)
-    plant = runner.plant_summary([_store()[k] for k in st.session_state.runs.values() if k in _store()]) if len(st.session_state.runs) > 1 else None
-    st.download_button('Excel workbook', report.excel_bytes(analysis, plant), file_name=f'{analysis.L.tag}_results.xlsx',
-                       mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', width='stretch', key=f'dl_x_{hash(current_key)}')
-    pdf_key = f'pdf_{hash(current_key)}'
-    if pdf_key in st.session_state:
-        st.download_button('PDF report', st.session_state[pdf_key], file_name=f'{analysis.L.tag}_report.pdf', mime='application/pdf',
-                           width='stretch', key=f'dl_p_{hash(current_key)}')
-    elif st.button('Prepare PDF report', width='stretch', key=f'prep_{hash(current_key)}'):
-        with st.spinner('Building the report'):
-            st.session_state[pdf_key] = report.pdf_bytes(analysis, plant)
-        st.rerun()
+        st.caption('Settings changed since this run. Press Run Analysis to apply them.')
+    checks = tabs.table_for(analysis, 'log_checks')
+    if len(checks):
+        st.markdown(dc.spacer(10), unsafe_allow_html=True)
+        st.markdown(dc_card_head(_ICON_TARGET, 'Block Discovery', 'Reason data location check'), unsafe_allow_html=True)
+        auto = checks['Block read from'].astype(str).str.startswith('found by header').sum()
+        st.markdown(
+            f'<div class="dc-card" style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:8px;">'
+            f'<span class="dc-sub" style="font-size:0.8rem;">Found by header text</span><span style="font-weight:700;">{auto}/{len(checks)} units</span></div>',
+            unsafe_allow_html=True)
+        with st.container(height=260 if len(checks) > 4 else 'content', border=False):
+            for _, row in checks.iterrows():
+                found = str(row['Block read from']).startswith('found by header')
+                pill = dc_pill(_ICON_BOLT, 'Auto', 'green') if found else dc_pill(_ICON_WARN, 'Manual', 'coral')
+                where = str(row['Block read from']).replace('found by header text: ', '') if found else str(row['Block read from'])
+                st.markdown(
+                    f'<div class="dc-unit-row"><div><div class="dc-unit-name">{dc.esc(L.short.get(row["Unit"], row["Unit"]))}</div>'
+                    f'<div class="dc-unit-loc">{_ICON_PIN}<span>{dc.esc(where)}</span></div></div>{pill}</div>', unsafe_allow_html=True)
 
-L = analysis.L
-head = L.metrics[L.headline[0]]
-st.markdown(C.hero(f'{L.name}  |  {head.days} days', f'{L.name}', f'{analysis.file_name}'), unsafe_allow_html=True)
+show_logo_if_present()
+head_unit = L.headline[0]
+head = L.metrics[head_unit]
+dates = L.dfs[head_unit]['Date']
+window = f'{dates.min().day} {dates.min():%b %Y} – {dates.max().day} {dates.max():%b %Y}'
+pills = dc_pill(_ICON_BRANCH, line, 'orange') + dc_pill(_ICON_CALENDAR_X, window, 'gray')
+if len(L.headline) == 1:
+    pills += dc_pill(_ICON_GAUGE, f'Availability {head.availability:.1f}%', 'green')
+st.markdown(dc_header(APP_NAME, APP_SUB, pills), unsafe_allow_html=True)
+pm_text = runner.PLANNED_MAINTENANCE_LABELS[analysis.options['planned_maintenance']].lower()
+st.markdown(f'**{head.days} days analysed**' + (' (March excluded)' if analysis.options['exclude_march'] else ''))
+st.caption(f'Availability = running time / planned production time. Planned maintenance is {pm_text}. File: {analysis.file_name}.')
+if analysis.errors:
+    st.markdown(dc.callout(f'{len(analysis.errors)} section(s) did not finish: ' + '; '.join(f'{k} ({v})' for k, v in analysis.errors.items()),
+                           title='Partial results', tone='warn'), unsafe_allow_html=True)
 
-page_list = list(pages.PAGES) + (['Plant'] if len(st.session_state.runs) > 1 else [])
-if st.session_state.get('page') not in page_list:
-    st.session_state.page = 'Overview'
-st.write('')
-choice = st.segmented_control('Section', page_list, key='page', label_visibility='collapsed')
-choice = choice or 'Overview'
-
-if analysis.errors and choice != 'Checks':
-    st.markdown(C.callout(f'{len(analysis.errors)} section(s) did not finish. See Checks for the detail.', title='Partial results', tone='warn'),
-                unsafe_allow_html=True)
-
-renderers = {'Overview': pages.render_overview, 'Units': pages.render_units, 'Causes': pages.render_causes, 'Forecast': pages.render_forecast,
-             'Time between stops': pages.render_weibull, 'Findings': pages.render_findings, 'Checks': pages.render_checks}
+# ------------------------------------------------------------------------------ tabs (lazy: only the open tab is built)
+names = tabs.tab_names(analysis)
 try:
-    if choice == 'Plant':
-        pages.render_plant([_store()[k] for k in st.session_state.runs.values() if k in _store()], MODE)
-    else:
-        renderers[choice](analysis, MODE)
-except Exception as error:
-    st.markdown(C.callout(f'{type(error).__name__}: {error}', title='This page could not be drawn', tone='warn'), unsafe_allow_html=True)
-    with st.expander('Technical detail'):
-        st.code(traceback.format_exc())
+    containers = st.tabs(names, key='main_tabs', on_change='rerun')
+except TypeError:  # older Streamlit: every tab is built on every run
+    containers = st.tabs(names)
+plant = None
+if len(st.session_state.runs) > 1:
+    plant = runner.plant_summary([_store()[k] for k in st.session_state.runs.values() if k in _store()])
+renderers = {
+    'Availability & Integrity': tabs.render_integrity, 'Roaster Attribution': tabs.render_attribution,
+    'Strategy & Improvement': tabs.render_strategy, 'Theme Breakdown': tabs.render_themes, 'Own Reason Logs': tabs.render_own_logs,
+    'Raw Logs': tabs.render_raw, 'Predictive Analytics': tabs.render_predictive,
+}
+for name, container in zip(names, containers):
+    if not EAGER and not getattr(container, 'open', True):
+        continue
+    with container:
+        try:
+            if name == 'Report Export':
+                tabs.render_export(analysis, MODE, plant, lambda: report.pdf_bytes(analysis, plant), report.excel_bytes(analysis, plant),
+                                   str(abs(hash(current_key))))
+            else:
+                renderers[name](analysis, MODE)
+        except Exception as error:
+            st.markdown(dc.callout(f'{type(error).__name__}: {error}', title='This tab could not be drawn', tone='warn'), unsafe_allow_html=True)
+            with st.expander('Technical detail'):
+                st.code(traceback.format_exc())
+
+st.markdown(f'<div class="dc-footer">{APP_NAME} · Barry Callebaut Ghana reliability workspace · analysis runs on your uploaded file for this session only.</div>',
+            unsafe_allow_html=True)
