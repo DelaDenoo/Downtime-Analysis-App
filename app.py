@@ -5547,6 +5547,90 @@ div[data-testid="stExpander"] summary { font-weight: 620; color: var(--ink); }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 [data-testid="stTabs"] [role="tabpanel"] [data-testid="stVerticalBlock"] > div { animation: rise .5s var(--settle) both; }
 
+/* ---------- guidance: sidebar step badges, start-here screen, glance, tab intro, glossary ---------- */
+.dc-step { position: absolute; right: -5px; top: -5px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 99px; background: var(--orange); color: #fff; font-size: 0.66rem; font-weight: 750;
+  display: grid; place-items: center; box-shadow: 0 0 0 2px var(--side-solid, var(--bg)); letter-spacing: 0; }
+.dc-tag { margin-left: 8px; padding: 2px 8px; border-radius: 99px; background: var(--gray-tint); color: var(--sub-text); font-size: 0.66rem; font-weight: 650; letter-spacing: 0.02em; vertical-align: 2px; }
+.dc-state { display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: var(--sub-text); margin: 8px 2px 0; line-height: 1.35; }
+.dc-state-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sub); flex-shrink: 0; margin-top: 6px; }
+.dc-state-good { color: var(--green); } .dc-state-good .dc-state-dot { background: var(--green); }
+.dc-state-warn { color: var(--orange-deep); } .dc-state-warn .dc-state-dot { background: var(--orange); }
+
+.dc-welcome { margin: 0.4rem 0 0.4rem; }
+.dc-welcome-title { font-size: 1.7rem; font-weight: 740; letter-spacing: -0.024em; line-height: 1.1; color: var(--ink); }
+.dc-welcome-sub { color: var(--sub-text); font-size: 1rem; margin: 6px 0 18px; max-width: 42rem; line-height: 1.5; }
+.dc-onboard-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.dc-onboard { display: flex; gap: 14px; align-items: flex-start; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 18px; box-shadow: var(--shadow);
+  transition: transform .35s var(--settle), border-color .3s var(--settle), background-color .3s var(--settle); }
+.dc-onboard-n { flex: 0 0 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 750; font-size: 0.95rem; background: var(--gray-tint); color: var(--sub-text); }
+.dc-onboard-title { font-weight: 680; font-size: 1rem; letter-spacing: -0.01em; color: var(--ink); }
+.dc-onboard-text { font-size: 0.88rem; color: var(--sub-text); line-height: 1.5; margin-top: 3px; }
+.dc-onboard-text b { color: var(--ink); font-weight: 650; }
+.dc-onboard-active { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-tint), var(--shadow); }
+.dc-onboard-active .dc-onboard-n { background: var(--orange); color: #fff; }
+.dc-onboard-done .dc-onboard-n { background: var(--green-tint); color: var(--green); }
+.dc-onboard-todo { opacity: 0.72; }
+.dc-need .dc-card-title { font-size: 0.98rem; }
+
+.dc-glance { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 18px 20px 20px; margin: 0.2rem 0 1.1rem; box-shadow: var(--shadow); }
+.dc-glance-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.dc-glance-title { font-size: 1.12rem; font-weight: 720; letter-spacing: -0.016em; color: var(--ink); }
+.dc-glance-for { font-size: 0.82rem; color: var(--sub-text); }
+.dc-glance-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.dc-glance-n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dc-glance-n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dc-glance-n5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }              /* 3 above, 2 below, so no card is left alone */
+.dc-glance-n5 > .dc-glance-item { grid-column: span 2; }
+.dc-glance-n5 > .dc-glance-item:nth-child(n+4) { grid-column: span 3; }
+@media (max-width: 1100px) { .dc-glance-n3, .dc-glance-n4, .dc-glance-n5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dc-glance-n3 > :last-child, .dc-glance-n5 > :last-child { grid-column: 1 / -1 !important; } .dc-glance-n5 > .dc-glance-item, .dc-glance-n5 > .dc-glance-item:nth-child(n+4) { grid-column: auto; } }
+@media (max-width: 640px) { .dc-glance-n3, .dc-glance-n4, .dc-glance-n5 { grid-template-columns: 1fr; } }
+.dc-glance-item { background: var(--gray-tint); border-radius: 15px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.dc-glance-q { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 650; color: var(--sub-text); letter-spacing: 0.005em; }
+.dc-glance-ic { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--orange-tint); color: var(--orange-deep); flex-shrink: 0; }
+.dc-glance-ic svg { width: 13px; height: 13px; }
+.dc-glance-a { font-size: 1.45rem; font-weight: 750; letter-spacing: -0.024em; line-height: 1.15; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.dc-glance-x { font-size: 0.83rem; line-height: 1.45; color: var(--ink); }
+.dc-glance-go { margin-top: auto; padding-top: 6px; font-size: 0.74rem; color: var(--orange-deep); font-weight: 620; }
+
+.dc-intro { display: flex; gap: 10px; align-items: flex-start; font-size: 0.9rem; line-height: 1.5; color: var(--ink); background: var(--orange-tint); border-radius: 14px; padding: 11px 15px; margin: 0 0 1rem; }
+.dc-intro-dot { flex: 0 0 8px; height: 8px; border-radius: 50%; background: var(--orange); margin-top: 7px; }
+
+.dc-gloss { display: grid; grid-template-columns: minmax(0, 0.38fr) minmax(0, 1fr); gap: 10px 14px; font-size: 0.86rem; line-height: 1.45; }
+.dc-gloss-term { font-weight: 680; color: var(--ink); }
+.dc-gloss-def { color: var(--sub-text); }
+@media (max-width: 640px) { .dc-gloss { grid-template-columns: 1fr; gap: 2px; } .dc-gloss-def { margin-bottom: 10px; } }
+
+/* ---------- touch and keyboard: 44 px targets, a clear focus ring, comfortable on a tablet ---------- */
+.stButton > button, .stDownloadButton > button { min-height: 44px; }
+[data-baseweb="select"] > div { min-height: 44px; }
+[data-testid="stTab"] { min-height: 40px; }
+[data-testid="stRadio"] label, [data-testid="stToggle"] label, [data-testid="stCheckbox"] label { min-height: 36px; align-items: center; }
+:is(button, [role="tab"], [role="radio"], [role="combobox"], summary, input, a):focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; border-radius: 12px; }
+@media (pointer: coarse), (max-width: 900px) {
+  .stButton > button, .stDownloadButton > button { min-height: 50px; font-size: 1rem; }
+  [data-baseweb="select"] > div, [data-baseweb="input"] > div { min-height: 50px; }
+  [data-testid="stTab"] { min-height: 46px; padding: 10px 16px !important; }
+  [data-testid="stTab"] p { font-size: 0.92rem; }
+  [data-testid="stRadio"] label, [data-testid="stToggle"] label, [data-testid="stCheckbox"] label { min-height: 44px; }
+  .stApp p, .stApp li { font-size: 1rem; }
+  .dc-pill { padding: 9px 15px; }
+  div[data-testid="stExpander"] summary { min-height: 48px; }
+}
+@media (max-width: 720px) {
+  .dc-header-title { font-size: 1.2rem; }
+  .dc-header-right { width: 100%; }
+  .dc-metric-value { font-size: 2rem; }
+  .dc-welcome-title { font-size: 1.45rem; }
+}
+
+/* ---------- print: just the page, no controls ---------- */
+@media print {
+  section[data-testid="stSidebar"], header[data-testid="stHeader"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"], .stButton, .stDownloadButton, [data-testid="stToolbar"] { display: none !important; }
+  [data-testid="stMain"] .block-container { max-width: none; padding: 0 !important; }
+  .dc-card, .dc-glance, .dc-callout { box-shadow: none !important; break-inside: avoid; }
+  [data-testid="stTabs"] [role="tablist"] { display: none; }
+}
+
 /* ---------- accessibility ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation: fadein 0.2s ease both !important; }
@@ -5638,10 +5722,13 @@ def dc_header(title, subtitle, pills_html):
     )
 
 
-def dc_card_head(icon_svg, title, subtitle, variant='orange'):
+def dc_card_head(icon_svg, title, subtitle, variant='orange', step=None, tag=None):
+    """`step` puts a small number badge on the icon (the sidebar's 1-2-3 flow); `tag` adds a quiet label such as Optional."""
+    badge = f'<span class="dc-step">{esc(step)}</span>' if step else ''
+    tag_html = f'<span class="dc-tag">{esc(tag)}</span>' if tag else ''
     return (
-        f'<div class="dc-card-head"><div class="dc-icon-sq dc-icon-sq-{variant}">{icon_svg}</div>'
-        f'<div><div class="dc-card-title">{esc(title)}</div>'
+        f'<div class="dc-card-head"><div class="dc-icon-sq dc-icon-sq-{variant}" style="position:relative">{icon_svg}{badge}</div>'
+        f'<div><div class="dc-card-title">{esc(title)}{tag_html}</div>'
         f'<div class="dc-card-subtitle">{esc(subtitle)}</div></div></div>'
     )
 
@@ -5686,6 +5773,117 @@ def note_card(paragraphs):
 
 def spacer(px):
     return f'<div style="height:{px}px"></div>'
+''',
+# ====================================================================================================
+# module ui.guide
+# ====================================================================================================
+'ui.guide': r'''"""Words and small HTML pieces that help people who do not live in the data: the start-here screen, the plain-language
+glance, one-line tab introductions and the glossary. Everything here is plain text or HTML; no Streamlit calls."""
+from .dc import _ICON_BOLT, _ICON_GAUGE, _ICON_TARGET, _ICON_UPLOAD, _ICON_ALARM, _ICON_SCALE, esc
+
+# What each tab is for, in one or two sentences.
+TAB_HELP = {
+    'Availability & Integrity': 'Start here. How much of the planned time each unit actually ran, where the hours went, and whether the workbook was read correctly.',
+    'Roaster Attribution': 'Some Roaster stops are blamed on other units in the comments. This tab shows which units get the blame and how many hours that adds up to.',
+    'Strategy & Improvement': 'Use this to decide where to act first. It shows how many points of Availability you would gain if a group of stops disappeared.',
+    'Theme Breakdown': 'How much of each log explains why a unit stopped, and how much is vague. Vague entries (Unknown, Minor stops) are the first thing to fix in how reasons are logged.',
+    'Own Reason Logs': 'The biggest reasons each unit logged for itself, ranked by hours. Pick a unit to see its top causes.',
+    'Raw Logs': 'Every reason row from the workbook and how the app counted it. Search or filter, then download the rows as a CSV file.',
+    'Predictive Analytics': 'What to expect next: a forecast of unplanned hours, a check of how that forecast would have done on recent days, and how long a unit usually runs between stops.',
+    'Report Export': 'Download everything as an Excel workbook, or build a PDF report you can share.',
+}
+
+GLOSSARY = [
+    ('Availability', 'Of the hours a unit was meant to be producing, the share it actually ran. 93% means about 93 of every 100 planned hours.'),
+    ('Calendar Availability', 'The same running time measured against every hour on the calendar. It is lower than Availability because planned stops count against it.'),
+    ('Utilization', 'How much of the calendar was booked for production, as opposed to planned time when the unit was not meant to produce.'),
+    ('Planned, unplanned, waiting', 'Planned stops were scheduled (for example maintenance). Unplanned stops were not scheduled. Waiting means the unit was held up by another unit or by missing material. '
+                                    'The app decides this only from the wording of each reason.'),
+    ('Vague reason', 'Unknown, Minor stops or Not clearly identified. They say the unit stopped but not why, so nothing can be fixed from them yet. The app never guesses a cause for them.'),
+    ('Availability gain (points)', 'How many percentage points Availability would rise if that group of stops disappeared completely.'),
+    ('Forecast: P10, P50, P90', 'The app replays the past thousands of times with random variation. P50 is the middle result. P10 is a good case (only 1 period in 10 had fewer unplanned hours). '
+                                'P90 is a bad case (only 1 in 10 had more).'),
+    ('Backtest', 'A sanity check. The forecast is run on recent days that already happened, to see whether reality landed inside the range. It is not proof.'),
+    ('Time between stops', 'How long a unit usually runs before an unplanned stop. The shape of the curve is an assumption, because the logs do not record the time of each single stop.'),
+]
+
+
+def glossary_html():
+    rows = ''.join(f'<div class="dc-gloss-term">{esc(t)}</div><div class="dc-gloss-def">{esc(d)}</div>' for t, d in GLOSSARY)
+    return f'<div class="dc-gloss">{rows}</div>'
+
+
+def intro_html(tab):
+    text = TAB_HELP.get(tab)
+    if not text:
+        return ''
+    return f'<div class="dc-intro"><span class="dc-intro-dot"></span><span>{esc(text)}</span></div>'
+
+
+# ---------------------------------------------------------------------------------------------- start-here screen
+def welcome_html(line, units, upload_name):
+    """Three numbered steps. The state of each follows what the person has done so far."""
+    has_file = upload_name is not None
+    states = ['done', 'done' if has_file else 'active', 'active' if has_file else 'todo']
+    steps = [
+        ('1', 'Choose the line', f'You are on <b>{esc(line)}</b>. Change it in the sidebar if you need another line.'),
+        ('2', 'Add its downtime workbook',
+         f'<b>{esc(upload_name)}</b> is ready.' if has_file else 'Drag the Excel file into the sidebar box, or press Browse. It is only used for this session.'),
+        ('3', 'Press Run Analysis', 'Takes about 15 seconds. The results appear on this page.' if has_file else 'It switches on once a file is added.'),
+    ]
+    cards = ''.join(
+        f'<div class="dc-onboard dc-onboard-{s}"><div class="dc-onboard-n">{"&#10003;" if s == "done" else n}</div>'
+        f'<div><div class="dc-onboard-title">{esc(title)}</div><div class="dc-onboard-text">{text}</div></div></div>'
+        for (n, title, text), s in zip(steps, states))
+    names = ', '.join(esc(u) for u in units)
+    need = (f'<div class="dc-card dc-need"><div class="dc-card-title">What file does {esc(line)} need?</div>'
+            f'<p class="dc-note" style="margin:6px 0 0">The same daily downtime and reason log workbook as before, with these units: {names}. '
+            f'If the app cannot find a unit\'s reasons it says which one, so nothing is silently skipped.</p></div>')
+    return (f'<div class="dc-welcome"><div class="dc-welcome-title">Start here</div>'
+            f'<p class="dc-welcome-sub">Three steps to see how a line performed, where the hours went and what to expect next. '
+            f'On a phone or small tablet, open the sidebar with the arrow at the top left.</p>'
+            f'<div class="dc-onboard-row">{cards}</div>{need}</div>')
+
+
+# ---------------------------------------------------------------------------------------------- the glance
+def _pp(x):
+    return f'{x:.1f} points'
+
+
+def glance_cards(unit_name, days, availability, top_loss, top_clear, forecast, clear_share, vague_names):
+    """Four plain answers. Each is (icon, question, answer, explanation, where_to_look)."""
+    cards = []
+    cards.append((_ICON_GAUGE, 'How did it run?', f'{availability:.1f}%',
+                  f'About {availability:.0f} of every 100 planned hours, over {days} days.', 'Availability & Integrity'))
+    if top_loss is not None:
+        name, hours, gain = top_loss
+        vague = name in vague_names
+        extra = ' This means the reason was not recorded clearly.' if vague else ''
+        cards.append((_ICON_SCALE, 'Where were the most hours lost?', name,
+                      f'{hours:,.0f} h of unplanned time. Fixing it is worth up to {_pp(gain)} of Availability.{extra}', 'Strategy & Improvement'))
+    if top_clear is not None and top_clear[0] != (top_loss or [None])[0]:
+        name, hours, gain = top_clear
+        cards.append((_ICON_BOLT, 'Biggest cause we can name', name,
+                      f'{hours:,.0f} h. Fixing it is worth up to {_pp(gain)} of Availability.', 'Strategy & Improvement'))
+    if forecast is not None:
+        lo, mid, hi, fdays = forecast
+        cards.append((_ICON_ALARM, f'What to expect, next {fdays} days', f'{lo:.1f} to {hi:.1f}%',
+                      f'Most likely about {mid:.1f}%. Only 1 period in 10 was below the first number or above the second.', 'Predictive Analytics'))
+    if clear_share is not None:
+        cards.append((_ICON_TARGET, 'How much is explained?', f'{clear_share:.0f}%',
+                      'of logged downtime has a clear reason. The rest is vague (Unknown, Minor stops), so it cannot be acted on yet.', 'Theme Breakdown'))
+    return cards
+
+
+def glance_html(unit_name, cards, window_text):
+    items = ''.join(
+        f'<div class="dc-glance-item"><div class="dc-glance-q"><span class="dc-glance-ic">{icon}</span>{esc(q)}</div>'
+        f'<div class="dc-glance-a">{esc(a)}</div><div class="dc-glance-x">{esc(x)}</div>'
+        f'<div class="dc-glance-go">See the {esc(tab)} tab</div></div>'
+        for icon, q, a, x, tab in cards)
+    return (f'<div class="dc-glance"><div class="dc-glance-head"><span class="dc-glance-title">At a glance</span>'
+            f'<span class="dc-glance-for">{esc(unit_name)}{" · " + esc(window_text) if window_text else ""}</span></div>'
+            f'<div class="dc-glance-grid dc-glance-n{len(cards)}">{items}</div></div>')
 ''',
 # ====================================================================================================
 # module ui.charts
@@ -6110,7 +6308,7 @@ import streamlit as st
 
 from engine import core, runner
 from . import charts
-from . import dc
+from . import dc, guide
 from .dc import (_ICON_BAR_CHART, _ICON_BOLT, _ICON_CALENDAR_X, _ICON_CLOCK, _ICON_GAUGE, _ICON_SCALE, _ICON_TARGET, _ICON_UPLOAD, _ICON_ALARM,
                  callout, dc_card_head, dc_metric_card, esc, findings_list, fmt_hours, fmt_pct, metric_grid, note_card, stat_row)
 
@@ -6194,6 +6392,59 @@ def own_pareto(L, unit):
     return g
 
 
+# ---------------------------------------------------------------------------------------------- the glance and tab introductions
+def intro(name):
+    html = guide.intro_html(name)
+    if html:
+        md(html)
+
+
+def _improvement_rows(a, unit):
+    t = table_for(a, 'A_attributed_improvement')
+    if not len(t):
+        t = table_for(a, 'own_improvement')
+    if not len(t) or 'Availability gain (pp)' not in t.columns:
+        return []
+    if 'Unit' in t.columns and unit in set(t['Unit']):
+        t = t[t['Unit'] == unit]
+    label = 'Group' if 'Group' in t.columns else 'Allocated_To'
+    hours = 'Window hrs' if 'Window hrs' in t.columns else 'Total_Duration_hours'
+    t = t.sort_values(hours, ascending=False)
+    return [(str(r[label]), float(r[hours]), float(r['Availability gain (pp)'])) for _, r in t.iterrows()]
+
+
+def render_glance(a):
+    """Four plain answers about the headline unit, above the tabs. Built only from tables the engine already produced."""
+    L = a.L
+    units = list(L.headline)
+    if len(units) == 1:
+        unit = units[0]
+    else:
+        unit = st.radio('Show the summary for', units, key=f'glance_unit_{a.line_key}', horizontal=True, format_func=lambda u: short_of(a).get(u, u))
+    M = L.metrics[unit]
+    vague = {v.lower() for v in runner.vague_causes()} | {'unattributable'}
+    rows = _improvement_rows(a, unit)
+    top_loss = rows[0] if rows else None
+    top_clear = next((r for r in rows if r[0].lower() not in vague), None)
+    forecast = None
+    hf = table_for(a, 'headline_forecast', unit)
+    base = hf[hf['Scenario'] == 'Base'] if len(hf) and 'Scenario' in hf.columns else hf
+    if len(base):
+        r = base.iloc[0]
+        forecast = (float(r['Availability P10 (%)']), float(r['Availability P50 (%)']), float(r['Availability P90 (%)']), int(a.options['forecast_days']))
+    clear = None
+    cov = L.coverage
+    if len(cov) and unit in cov.index:
+        c = cov.loc[unit]
+        vague_col = next((k for k in cov.columns if k.startswith('Vague')), None)
+        if vague_col:
+            clear = max(0.0, 100.0 - float(c[vague_col]) - float(c.get('No theme (%)', 0.0)))
+    d = L.dfs[unit]['Date']
+    window = f'{d.min().day} {d.min():%b %Y} to {d.max().day} {d.max():%b %Y}'
+    cards = guide.glance_cards(short_of(a).get(unit, unit), M.days, M.availability, top_loss, top_clear, forecast, clear, vague)
+    md(guide.glance_html(short_of(a).get(unit, unit), cards, window))
+
+
 # ---------------------------------------------------------------------------------------------- Availability & Integrity
 def render_integrity(a, mode):
     L = a.L
@@ -6240,12 +6491,17 @@ def render_integrity(a, mode):
             show(monthly[monthly['Unit'] == mu].drop(columns=['Unit']))
 
     h2('Data integrity')
-    md(dc_card_head(_ICON_UPLOAD, 'Load check', 'The daily sheet and each reason log, checked rather than trusted'))
-    st.markdown('### Daily sheet')
-    show(table_for(a, 'daily_checks'))
-    st.markdown('### Reason logs')
-    note('Log hours should match the daily downtime closely.')
-    show(table_for(a, 'log_checks'))
+    note('Checks that the workbook was read correctly. Most people can skip the tables unless a warning shows here.')
+    reconcile = next((f for f in L.findings if 'reconcile' in f), None)
+    if reconcile:
+        md(callout(reconcile, title='Reason logs against the daily sheet', tone='good' if reconcile.rstrip().endswith('none.') else 'warn'))
+    with st.expander('Show the workbook checks'):
+        md(dc_card_head(_ICON_UPLOAD, 'Load check', 'The daily sheet and each reason log, checked rather than trusted'))
+        st.markdown('### Daily sheet')
+        show(table_for(a, 'daily_checks'))
+        st.markdown('### Reason logs')
+        note('Log hours should match the daily downtime closely.')
+        show(table_for(a, 'log_checks'))
     integrity = table_for(a, 'integrity')
     if len(integrity):
         with st.expander('Do neighbouring units move together?'):
@@ -6817,7 +7073,7 @@ import traceback
 import streamlit as st
 
 from engine import configs, runner
-from ui import dc, report, tabs, theme
+from ui import dc, guide, report, tabs, theme
 from ui.dc import (_ICON_BOLT, _ICON_BRANCH, _ICON_CALENDAR_X, _ICON_GAUGE, _ICON_PIN, _ICON_TARGET, _ICON_UPLOAD, _ICON_WARN,
                    dc_card_head, dc_header, dc_pill)
 
@@ -6828,6 +7084,8 @@ LOGO, FAVICON = 'logo.png', 'favicon_barry.jpg'
 st.set_page_config(page_title=APP_NAME, page_icon=FAVICON if os.path.exists(FAVICON) else ':material/monitoring:', layout='wide')
 theme.inject(st)
 MODE = theme.mode(st)
+if st.session_state.get('_toast'):
+    st.toast(st.session_state.pop('_toast'), icon=':material/check_circle:')
 MAX_STORED = 8
 EAGER = bool(os.environ.get('DOWNTIME_APP_EAGER'))  # test hook: build every tab on every run
 
@@ -6866,11 +7124,11 @@ def _run(line, data, name, options, holder):
     except Exception as error:
         bar.empty()
         holder.markdown(dc.callout(
-            f'The file opened, but the layout for {line} was not found. Check that it is the daily and reason log workbook for this line, '
-            f'with the same sheet names and columns as before. (Detail: {type(error).__name__}: {error})',
-            title='This workbook could not be read', tone='warn'), unsafe_allow_html=True)
+            f'Check that you chose the right line in the sidebar and uploaded that line\'s daily and reason log workbook. '
+            f'Nothing was changed. Fix the choice and press Run Analysis again. The technical detail below is for whoever maintains the app.',
+            title=f'This does not look like a {line} workbook', tone='warn'), unsafe_allow_html=True)
         with holder.expander('Technical detail'):
-            st.code(traceback.format_exc())
+            st.code(f'{type(error).__name__}: {error}\n\n' + traceback.format_exc())
         return key, None
     bar.empty()
     _remember(key, analysis)
@@ -6893,18 +7151,22 @@ if dev and 'dev_loaded' not in st.session_state:
 st.session_state.setdefault('runs', {})
 
 # ------------------------------------------------------------------------------ sidebar (same cards as the old dashboard)
-st.sidebar.markdown(dc_card_head(_ICON_BRANCH, 'Line Setup', 'Configure the analysis source'), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_BRANCH, 'Line Setup', 'Choose the line to analyse', step=1), unsafe_allow_html=True)
 st.sidebar.markdown(dc.spacer(6), unsafe_allow_html=True)
+if 'line' not in st.session_state and st.query_params.get('line') in configs.LINES:  # a shared link can open a line directly
+    st.session_state['line'] = st.query_params['line']
 line = st.sidebar.selectbox('Select line', list(configs.LINES), key='line', label_visibility='collapsed')
+if st.query_params.get('line') != line:
+    st.query_params['line'] = line
 cfg = configs.LINES[line]
 st.sidebar.caption(f'Cocoa primary processing · {len(cfg["daily"])} units')
 
 st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
-st.sidebar.markdown(dc_card_head(_ICON_UPLOAD, 'Upload Downtime Log', 'Drag and drop the .xlsx file'), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_UPLOAD, 'Upload Downtime Log', 'Drag and drop the .xlsx file', step=2), unsafe_allow_html=True)
 upload = st.sidebar.file_uploader('Upload Downtime Log (.xlsx)', type=['xlsx', 'xlsm'], key=f'up_{line}', label_visibility='collapsed')
 
 st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
-st.sidebar.markdown(dc_card_head(_ICON_CALENDAR_X, 'Exclude Month(s)', 'Drop a known bad-data window'), unsafe_allow_html=True)
+st.sidebar.markdown(dc_card_head(_ICON_CALENDAR_X, 'Exclude Month(s)', 'Drop a known bad-data window', tag='Optional'), unsafe_allow_html=True)
 march = st.sidebar.toggle('Exclude March', value=False, key='opt_march',
                           help=f'Skips the March window defined for this line ({cfg["march_start"]} to {cfg["march_end"]}). Off by default.')
 
@@ -6919,8 +7181,34 @@ with st.sidebar.expander('Analysis Settings'):
     trials = st.select_slider('Simulated periods', [2000, 5000, 10000, 20000], value=10000, key='opt_trials')
 options = dict(planned_maintenance=pm, exclude_march=march, forecast_days=fdays, backtest_days=bdays, weibull_beta=beta, n_trials=trials)
 
+# what is on screen now, so the button can say what will happen
+prev_key = st.session_state.runs.get(line)
+prev = _store().get(prev_key) if prev_key else None
+file_hash = hashlib.sha1(upload.getvalue()).hexdigest() if upload is not None else None
+changed = prev is not None and (any(prev.options.get(k) != v for k, v in options.items()) or (file_hash is not None and file_hash != prev_key[1]))
+
 st.sidebar.markdown(dc.spacer(14), unsafe_allow_html=True)
-run_clicked = st.sidebar.button('▶ Run Analysis', type='primary', width='stretch', disabled=upload is None, key='run')
+st.sidebar.markdown(dc_card_head(_ICON_BOLT, 'Analyse the file', 'Takes about 15 seconds', step=3), unsafe_allow_html=True)
+if prev is not None and not changed:
+    button_label, disabled, state = '✓ Results are up to date', True, ('good', f'Showing {prev.file_name}.')
+elif prev is not None:
+    button_label, disabled, state = '↻ Run again', False, ('warn', 'The file or a setting changed since the last run.')
+elif upload is None:
+    button_label, disabled, state = '▶ Run Analysis', True, ('', 'Add a workbook to switch this on.')
+else:
+    button_label, disabled, state = '▶ Run Analysis', False, ('good', 'Ready. Press the button to start.')
+if prev is not None and upload is None:
+    state = ('', f'Showing {prev.file_name}. Add a new workbook to analyse another file.')
+run_clicked = st.sidebar.button(button_label, type='primary', width='stretch', disabled=disabled or (upload is None and prev is None), key='run')
+st.sidebar.markdown(f'<div class="dc-state dc-state-{state[0]}"><span class="dc-state-dot"></span><span>{dc.esc(state[1])}</span></div>', unsafe_allow_html=True)
+
+st.sidebar.markdown(dc.spacer(10), unsafe_allow_html=True)
+with st.sidebar.popover('Help and glossary', icon=':material/help:', width='stretch'):
+    st.markdown(guide.glossary_html(), unsafe_allow_html=True)
+    st.markdown('**Quick tips**')
+    st.markdown('- Hover a chart for exact numbers. Double-click it to reset the zoom.\n'
+                '- Click a table heading to sort it.\n'
+                '- Planned maintenance is set under Analysis Settings. Change it, then run again.')
 
 # ------------------------------------------------------------------------------ run gate: analysis starts on an explicit click
 holder = st.container()
@@ -6929,6 +7217,8 @@ if run_clicked and upload is not None:
     run_key, fresh = _run(line, data, upload.name, options, holder)
     if fresh is not None:
         st.session_state.runs[line] = run_key
+        st.session_state['_toast'] = f'Analysis ready: {fresh.L.metrics[fresh.L.headline[0]].days} days of {line}'
+        st.rerun()  # redraw so the sidebar shows the new state at once
 
 current_key = st.session_state.runs.get(line)
 analysis = _store().get(current_key) if current_key else None
@@ -6938,18 +7228,12 @@ if current_key and analysis is None:
 if analysis is None:
     show_logo_if_present()
     holder.markdown(dc_header(APP_NAME, APP_SUB, dc_pill(_ICON_BRANCH, line, 'orange')), unsafe_allow_html=True)
-    if upload is None:
-        holder.info('Upload a downtime log Excel file in the sidebar to begin.')
-    else:
-        holder.info(f'**{upload.name}** is ready. Click **▶ Run Analysis** in the sidebar to begin.')
+    holder.markdown(guide.welcome_html(line, cfg['daily'], upload.name if upload is not None else None), unsafe_allow_html=True)
     st.stop()
 
 # ------------------------------------------------------------------------------ after a run
 L = analysis.L
-stale = {k: v for k, v in options.items() if analysis.options.get(k) != v}
 with st.sidebar:
-    if stale:
-        st.caption('Settings changed since this run. Press Run Analysis to apply them.')
     checks = tabs.table_for(analysis, 'log_checks')
     if len(checks):
         st.markdown(dc.spacer(10), unsafe_allow_html=True)
@@ -6984,6 +7268,12 @@ if analysis.errors:
     st.markdown(dc.callout(f'{len(analysis.errors)} section(s) did not finish: ' + '; '.join(f'{k} ({v})' for k, v in analysis.errors.items()),
                            title='Partial results', tone='warn'), unsafe_allow_html=True)
 
+try:
+    tabs.render_glance(analysis)
+except Exception:  # the summary is a convenience; the tabs below still work without it
+    if EAGER:
+        raise
+
 # ------------------------------------------------------------------------------ tabs (lazy: only the open tab is built)
 names = tabs.tab_names(analysis)
 try:
@@ -7002,6 +7292,7 @@ for name, container in zip(names, containers):
     if not EAGER and not getattr(container, 'open', True):
         continue
     with container:
+        tabs.intro(name)
         try:
             if name == 'Report Export':
                 tabs.render_export(analysis, MODE, plant, lambda: report.pdf_bytes(analysis, plant), report.excel_bytes(analysis, plant),
