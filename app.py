@@ -182,10 +182,10 @@ UNIT_PALETTE = [
 SAVE_DIR = os.path.join(tempfile.gettempdir(), 'downtime_app_outputs')
 RESULTS_FILE = os.path.join(SAVE_DIR, 'plant_lines_results.xlsx')
 
-# Planned maintenance is accounted for elsewhere, so by default it leaves both the time base and the
-# downtime. 'planned_stop' keeps it in the time base as planned non-production time. Availability is
-# identical either way; only Calendar Availability and Utilization change.
-PLANNED_MAINTENANCE_HANDLING = 'exclude_from_calculation'  # or 'planned_stop'
+# Planned maintenance counts as a planned stop (textbook calendar definitions): it stays in the time base as
+# planned non-production time. 'exclude_from_calculation' leaves it out of both the time base and the downtime.
+# Availability is identical either way; only Calendar Availability and Utilization change.
+PLANNED_MAINTENANCE_HANDLING = 'planned_stop'  # or 'exclude_from_calculation'
 PM_PHRASE = {
     'exclude_from_calculation': 'left out of the calculation',
     'planned_stop': 'counted as a planned stop',
@@ -3366,7 +3366,8 @@ def weibull_unit(L, unit, view='own'):
     groups = pd.DataFrame(rows)
 
     fitted, problem = fit_weibull_beta(L.dfs[unit]['Duration (hours)'])
-    in_curve = live[~live['Cause'].isin(UNIT_CURVE_LEAVE_OUT)]
+    _leave_out = [UNIT_CURVE_LEAVE_OUT] if isinstance(UNIT_CURVE_LEAVE_OUT, str) else list(UNIT_CURVE_LEAVE_OUT)
+    in_curve = live[~live['Cause'].isin(_leave_out)]
     n_stops = in_curve['Stops'].sum()
     summary = {
         'Unit': unit,
@@ -5264,11 +5265,12 @@ _LOCK = threading.Lock()  # the engine keeps its settings in module globals, so 
 
 # Settings the app lets the user change. Everything else keeps the notebook's value.
 DEFAULT_OPTIONS = {
-    'planned_maintenance': 'exclude_from_calculation',  # or 'planned_stop'
+    'planned_maintenance': 'planned_stop',  # or 'exclude_from_calculation'
     'exclude_months': (),  # 'YYYY-MM' strings to leave out
     'forecast_days': 30,
     'backtest_days': 30,
     'weibull_beta': 1.5,
+    'weibull_leave_out': ('Minor stops',),  # causes left out of the whole-unit Weibull curve (their hours still leave the running time)
     'n_trials': 10_000,
 }
 
@@ -5296,13 +5298,18 @@ STEPS = [
 ]
 
 
+def _as_tuple(value):
+    """A single cause name or a list of them, always as a tuple (a bare string would be read letter by letter)."""
+    return (value,) if isinstance(value, str) else tuple(value)
+
+
 def apply_options(options):
     """Write the chosen settings into the engine. Called with the lock held."""
     core.PLANNED_MAINTENANCE_HANDLING = options['planned_maintenance']
     core.FORECAST_DAYS = int(options['forecast_days'])
     core.BACKTEST_DAYS = int(options['backtest_days'])
     core.WEIBULL_BETA = float(options['weibull_beta'])
-    core.UNIT_CURVE_LEAVE_OUT = ()  # the app recomputes the Weibull live when the reader changes this
+    core.UNIT_CURVE_LEAVE_OUT = _as_tuple(options.get('weibull_leave_out', ()))  # the reader can change this live in the Weibull section
     core.N_TRIALS = int(options['n_trials'])
     core.SHAPE = 1.0 / core.DURATION_CV ** 2
 
@@ -5479,7 +5486,7 @@ def weibull_live(analysis, unit, view='own', beta=None, leave_out=()):
         try:
             core.WEIBULL_BETA = float(beta if beta is not None else analysis.options['weibull_beta'])
             core.WEIBULL_BETA_BY_UNIT = {}
-            core.UNIT_CURVE_LEAVE_OUT = tuple(leave_out)
+            core.UNIT_CURVE_LEAVE_OUT = _as_tuple(leave_out)
             return core.weibull_unit(analysis.L, unit, view)
         finally:
             core.WEIBULL_BETA, core.WEIBULL_BETA_BY_UNIT, core.UNIT_CURVE_LEAVE_OUT = saved
@@ -5793,6 +5800,13 @@ div[data-testid="stExpander"] summary { font-weight: 620; color: var(--ink); }
 .dc-badge-coral { background: var(--coral-tint); color: var(--coral); }
 @media print { .dc-tbl-wrap { max-height: none !important; overflow: visible; box-shadow: none; break-inside: auto; } .dc-tbl-wrap .dc-tbl th { position: static; } }
 @media (max-width: 640px) { .dc-tbl-wrap .dc-tbl th, .dc-tbl-wrap .dc-tbl td { padding: 9px 12px !important; } }
+/* ---------- Weibull section: chart cards and chips ---------- */
+.st-key-wb_unit_card, .st-key-wb_cause_card, .st-key-wb_compare_card { background: var(--card); border: 1px solid var(--border); border-radius: 18px;
+  padding: 10px 14px 4px; margin: 4px 0 16px; box-shadow: var(--shadow); }
+.dc-wb-kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--orange-deep); background: var(--orange-tint); border-radius: 999px; padding: 4px 11px; margin: 6px 0 2px; }
+.dc-wb-title { font-size: 1.02rem; font-weight: 680; letter-spacing: -0.01em; color: var(--ink); margin: 2px 0 0; line-height: 1.3; }
+.dc-wb-sub { font-size: 0.82rem; color: var(--sub-text); margin: 1px 0 4px; line-height: 1.45; }
 @media (prefers-reduced-transparency: reduce) {
   header[data-testid="stHeader"], section[data-testid="stSidebar"] { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--card) !important; }
   header[data-testid="stHeader"]::after { display: none; }
@@ -6282,6 +6296,144 @@ def improvement_bars(improvement, mode, top=10):
     fig.update_yaxes(tickmode='array', tickvals=list(d[label]), ticktext=[_wrap(t, 28) for t in d[label]], showgrid=False)
     fig.update_xaxes(title_text='Availability gain if this group disappeared (percentage points)', range=[0, d['Availability gain (pp)'].max() * 1.3])
     return _base(fig, mode, height=max(280, 40 * len(d) + 100), legend=False, margin=dict(l=8, r=30, t=10, b=8))
+
+
+# ---------------------------------------------------------------------------------------------- Weibull graphs (interactive)
+def _surv(t, c, beta):
+    return np.exp(-c * np.asarray(t, dtype=float) ** beta)
+
+
+def _t_at(c, beta, level=0.05):
+    return (-np.log(level) / c) ** (1.0 / beta)
+
+
+def _tmax(coefs, beta):
+    finite = [_t_at(c, beta) for c in coefs if c is not None and np.isfinite(c) and c > 0]
+    return max(finite) * 1.05 if finite else 100.0
+
+
+def _time_axis(fig, tmax, title='Continuous running time since restart'):
+    """Hours on the axis with the day equivalent under each tick (one day = 24 hours)."""
+    steps = [6, 12, 24, 48, 72, 96, 168, 336, 720, 1440, 2160, 4320, 8760]
+    step = next((s for s in steps if tmax / s <= 7), steps[-1])
+    vals = [float(v) for v in np.arange(0, tmax * 1.0001, step)]
+    text = ['0' if v == 0 else f'{v:g} h' + (f'<br>{v / 24:g} d' if v >= 24 else '') for v in vals]
+    fig.update_xaxes(range=[0, tmax], tickmode='array', tickvals=vals, ticktext=text, title_text=title, showgrid=False)
+
+
+def _survival_axes(fig):
+    fig.update_yaxes(range=[0, 105], tickvals=[0, 25, 50, 75, 100], ticksuffix='%', title_text='Chance of still running without the stop')
+
+
+def _live_layout(fig, mode):
+    """Hover on, in the app's tooltip style (the other charts are static)."""
+    p = PAL[mode]
+    fig.update_layout(hovermode='x unified', hoverlabel=dict(bgcolor=p['tip'], font=dict(family=FONT, size=13, color=p['ink']), bordercolor=p['grid']))
+    fig.update_xaxes(hoverformat=',.0f', showspikes=True, spikemode='across', spikethickness=1, spikecolor=p['ink3'], spikedash='dot')
+    return fig
+
+
+def _rgba(hex_color, alpha):
+    h = hex_color.lstrip('#')
+    return f'rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{alpha})'
+
+
+def weibull_unit_curve(W, summary, mode, probability_days=(1, 3, 7)):
+    """Whole-unit curve: chance of running t hours without an own unplanned stop. Dashed = planned time still counted as running (Before);
+    solid with a soft band and a gentle fill = running time only (After). Dots mark the median and the 1, 3 and 7 day chances."""
+    p = PAL[mode]
+    cv, beta = W.curves, W.beta
+    tmax = _tmax([cv['Before'], cv['low']], beta)
+    t = np.linspace(0, tmax, 360)
+    days = t / 24
+    tip = '%{y:.0f}% still running<extra>%{fullData.name}</extra>'
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=t, y=_surv(t, cv['high'], beta) * 100, mode='lines', line=dict(width=0), hoverinfo='skip', showlegend=False))
+    fig.add_trace(go.Scatter(x=t, y=_surv(t, cv['low'], beta) * 100, mode='lines', line=dict(width=0), fill='tonexty', fillcolor=p['band'],
+                             name='80% range (few stops = wide)', hoverinfo='skip'))
+    fig.add_trace(go.Scatter(x=t, y=_surv(t, cv['Before'], beta) * 100, mode='lines', name='Before: planned time counted as running',
+                             line=dict(color=p['ink3'], width=2, dash='dash', shape='spline'), hovertemplate=tip))
+    fig.add_trace(go.Scatter(x=t, y=_surv(t, cv['After'], beta) * 100, mode='lines', name='After: running time only',
+                             line=dict(color=p['main'], width=4, shape='spline'), fill='tozeroy', fillcolor=_rgba(p['main'], 0.07), hovertemplate=tip))
+    fig.add_hline(y=50, line=dict(color=p['ink3'], width=1, dash='dot'))
+    med = float(summary['Median run After (h)'])
+    pts_x, pts_y, pts_t = [med], [50.0], [f'median {_hours_label(med)}']
+    for d in probability_days:
+        if 24.0 * d <= tmax:
+            pts_x.append(24.0 * d)
+            pts_y.append(float(_surv(24.0 * d, cv['After'], beta)) * 100)
+            pts_t.append(f'{d} d: {pts_y[-1]:.0f}%')
+    fig.add_trace(go.Scatter(x=pts_x, y=pts_y, mode='markers+text', text=pts_t, textposition='top right', textfont=dict(size=12, color=p['ink']),
+                             marker=dict(size=11, color=[p['coral']] + [p['main']] * (len(pts_x) - 1), line=dict(color=p['tip'], width=2)),
+                             showlegend=False, hoverinfo='skip', cliponaxis=False))
+    _time_axis(fig, tmax)
+    _survival_axes(fig)
+    return _live_layout(_base(fig, mode, height=400, margin=dict(l=8, r=18, t=10, b=8)), mode)
+
+
+def weibull_cause_curves(W, groups, mode):
+    """The largest identified causes on one chart: dashed = Before, solid with a band = After."""
+    p = PAL[mode]
+    beta = W.beta
+    colours = [p['main'], p['alt'], p['third'], p['coral']]
+    tmax = _tmax(list(groups['c Before']) + list(groups['c After low']), beta)
+    t = np.linspace(0, tmax, 360)
+    fig = go.Figure()
+    for colour, (_, g) in zip(colours, groups.iterrows()):
+        name = f'{_wrap(g["Group"], 34)}'
+        tip = '%{y:.0f}% still running<extra>' + str(g['Group'])[:30] + '</extra>'
+        fig.add_trace(go.Scatter(x=t, y=_surv(t, g['c After high'], beta) * 100, mode='lines', line=dict(width=0), hoverinfo='skip', showlegend=False))
+        fig.add_trace(go.Scatter(x=t, y=_surv(t, g['c After low'], beta) * 100, mode='lines', line=dict(width=0), fill='tonexty',
+                                 fillcolor=_rgba(colour, 0.16), hoverinfo='skip', showlegend=False))
+        fig.add_trace(go.Scatter(x=t, y=_surv(t, g['c Before'], beta) * 100, mode='lines', line=dict(color=colour, width=1.6, dash='dash', shape='spline'),
+                                 opacity=0.7, hoverinfo='skip', showlegend=False))
+        fig.add_trace(go.Scatter(x=t, y=_surv(t, g['c After'], beta) * 100, mode='lines', line=dict(color=colour, width=3.4, shape='spline'),
+                                 name=f'{name} (median {_hours_label(float(g["Median After"]))}, {g["Stops"]:.0f} stops)', hovertemplate=tip))
+    fig.add_hline(y=50, line=dict(color=p['ink3'], width=1, dash='dot'))
+    _time_axis(fig, tmax)
+    _survival_axes(fig)
+    fig = _live_layout(_base(fig, mode, height=420, margin=dict(l=8, r=18, t=10, b=8)), mode)
+    fig.update_layout(legend=dict(orientation='h', yanchor='top', y=-0.28, xanchor='left', x=0, font=dict(color=p['ink2'], size=12)),
+                      margin=dict(l=8, r=18, t=10, b=8))
+    return fig
+
+
+def weibull_compare(table, short, mode):
+    """Typical run before a stop for each unit: Before (open ring) to After (solid dot, with the 80% range as a whisker), on a log scale."""
+    p = PAL[mode]
+    d = table.dropna(subset=['Median run After (h)']).sort_values('Median run After (h)').copy()
+    names = [short.get(u, u) + (' *' if str(e).startswith(('Thin', 'CHECK')) else '') for u, e in zip(d['Unit'], d['Evidence'])]
+    after, before = d['Median run After (h)'].to_numpy(float), d['Median run Before (h)'].to_numpy(float)
+    low, high = d['Median After low (h)'].to_numpy(float), d['Median After high (h)'].to_numpy(float)
+    right = np.nanmax(np.vstack([before, high, after]), axis=0)  # rightmost mark of each row: the label sits beyond it
+    fig = go.Figure()
+    for y, a, b in zip(names, after, before):
+        fig.add_trace(go.Scatter(x=[a, b], y=[y, y], mode='lines', line=dict(color=p['pale'], width=6), hoverinfo='skip', showlegend=False))
+    fig.add_trace(go.Scatter(x=before, y=names, mode='markers', name='Before: planned time counted as running',
+                             marker=dict(size=12, color=p['paper'], line=dict(color=p['ink3'], width=2.5)),
+                             customdata=np.stack([before / 24], axis=1), hovertemplate='%{x:,.1f} h (%{customdata[0]:,.1f} d)<extra>Before</extra>'))
+    fig.add_trace(go.Scatter(x=after, y=names, mode='markers', name='After: running time only',
+                             error_x=dict(type='data', symmetric=False, array=np.maximum(high - after, 0), arrayminus=np.maximum(after - low, 0),
+                                          color=p['main'], thickness=2, width=5),
+                             marker=dict(size=13, color=p['main'], line=dict(color=p['tip'], width=2)),
+                             customdata=np.stack([after / 24, low, high], axis=1),
+                             hovertemplate='%{x:,.1f} h (%{customdata[0]:,.1f} d)<br>80% range %{customdata[1]:,.1f} to %{customdata[2]:,.1f} h<extra>After</extra>'))
+    fig.add_trace(go.Scatter(x=right * 1.35, y=names, mode='text', text=[_hours_label(v) for v in after], textposition='middle right',
+                             textfont=dict(color=p['ink'], size=12), hoverinfo='skip', showlegend=False))
+    lo_v, hi_v = float(np.nanmin(np.minimum(low, after))), float(np.nanmax(right))
+    cand = [5 / 60, 0.25, 0.5, 1, 3, 6, 12, 24, 48, 168, 720, 2160, 8760]
+    ticks = [v for v in cand if lo_v / 1.6 <= v <= hi_v * 3] or [1]
+
+    def tick_text(v):
+        if v < 1:
+            return f'{v * 60:.0f} min'
+        return f'{v:g} h' + (f'<br>{v / 24:g} d' if v >= 24 else '')
+    fig.update_xaxes(type='log', range=[np.log10(lo_v / 1.8), np.log10(hi_v * 7)], tickmode='array', tickvals=ticks,
+                     ticktext=[tick_text(v) for v in ticks], title_text='Median continuous run before an own unplanned stop (log scale)', showgrid=True)
+    fig.update_yaxes(type='category', showgrid=False, categoryorder='array', categoryarray=names)
+    fig = _base(fig, mode, height=max(260, 50 * len(names) + 130), margin=dict(l=8, r=18, t=10, b=8))
+    fig.update_layout(hovermode='closest')
+    return fig
 ''',
 # ====================================================================================================
 # module ui.table
@@ -6430,7 +6582,7 @@ import streamlit as st
 
 from engine import runner
 from . import charts, guide, table
-from .dc import (_ICON_BAR_CHART, _ICON_CLOCK, _ICON_GAUGE, callout, dc_metric_card, esc, findings_list, fmt_hours, fmt_pct, metric_grid, note_card)
+from .dc import (_ICON_BAR_CHART, _ICON_CLOCK, _ICON_GAUGE, _ICON_ALARM, _ICON_TARGET, callout, dc_metric_card, esc, findings_list, fmt_hours, fmt_pct, metric_grid, note_card)
 
 
 def tab_names(a):
@@ -6559,7 +6711,10 @@ def render_integrity(a, mode):
         dc_metric_card('Utilization', fmt_pct(M.utilization), 'of the time base planned for production', _ICON_BAR_CHART, 'coral', '%'),
     ]))
     if M.pm and M.pm > 0:
-        st.caption(f'Planned maintenance left out: {M.pm:,.0f} h.')
+        if a.options.get('planned_maintenance') == 'exclude_from_calculation':
+            st.caption(f'Planned maintenance left out: {M.pm:,.0f} h.')
+        else:
+            st.caption(f'Planned maintenance ({M.pm:,.0f} h) is counted as a planned stop, so it stays in the time base.')
 
     h2('Where the hours go')
     bridge = table_for(a, 'bridge', unit)
@@ -6576,7 +6731,10 @@ def render_integrity(a, mode):
         h2('All units')
         chart(charts.availability_bars(overall, short_of(a), mode), f'avail_{a.line_key}')
         with st.expander('Table'):
-            show(overall)
+            measures = ['Availability (%)', 'Calendar Availability (%)', 'Utilization (%)']
+            three = overall[['Unit'] + [m for m in measures if m in overall.columns]].copy()
+            three['Unit'] = three['Unit'].map(lambda u: short_of(a).get(u, u))
+            show(three.round(1))
 
     monthly = table_for(a, 'units_monthly', unit)
     if len(monthly):
@@ -6730,30 +6888,101 @@ def render_predictive(a, mode):
         show(pd.DataFrame({'Unit': bt['Unit'].map(lambda u: short.get(u, u)), 'Forecast (h)': bt['Forecast P50'],
                            'Actual (h)': bt['Actual (scaled, hrs)'], 'Result': bt['Verdict']}))
 
+    _render_weibull(a, mode, short)
+
+
+def _wb_head(kicker, title, sub=''):
+    md(f'<div class="dc-wb-kicker">{esc(kicker)}</div><div class="dc-wb-title">{esc(title)}</div>' + (f'<div class="dc-wb-sub">{esc(sub)}</div>' if sub else ''))
+
+
+def _wb_cards(W):
+    S = W.summary
+    lo, hi = S.get('Median After low (h)'), S.get('Median After high (h)')
+    seven = S.get('Runs 7 d without a stop (%)')
+    return metric_grid([
+        dc_metric_card('Typical run before a stop', fmt_hours(S['Median run After (h)']), f'half of runs last longer; {W.n:,.0f} own stops counted', _ICON_CLOCK, 'orange'),
+        dc_metric_card('Likely range', f'{fmt_hours(lo)} to {fmt_hours(hi)}', 'the 80% range; few stops make it wide', _ICON_TARGET, 'green'),
+        dc_metric_card('Runs 7 days without a stop', f'{seven:.0f}' if seven is not None and np.isfinite(seven) else 'n/a', 'chance, own unplanned stops only', _ICON_ALARM, 'coral',
+                       '%' if seven is not None and np.isfinite(seven) else ''),
+    ])
+
+
+def _render_weibull(a, mode, short):
+    L = a.L
+    beta = float(a.options['weibull_beta'])
     h2('Time between stops')
-    all_w = runner.weibull_all(a, float(a.options['weibull_beta']), ())
-    rows = [w.summary for w in all_w.values() if w.curves is not None and w.running > 0]
-    if rows:
-        table = pd.DataFrame(rows)
-        with st.spinner('Drawing the Weibull graphs'):
-            figs = runner.weibull_figures(a)
-        if figs.get('compare'):
-            st.image(figs['compare'], width='stretch')
-        shown = pd.DataFrame({
-            'Unit': table['Unit'].map(lambda u: short.get(u, u)),
-            'Stops counted': table['Own stops'].round(0),
-            'Typical run before a stop': table['Median run After (h)'].map(fmt_hours),
-            'Likely range': [f'{fmt_hours(lo)} to {fmt_hours(hi)}' for lo, hi in zip(table['Median After low (h)'], table['Median After high (h)'])],
-        })
+    default_out = tuple(a.options.get('weibull_leave_out', ()))
+    leave_out = ()
+    if default_out:
+        label = 'Leave ' + ' and '.join(f'"{c}"' for c in default_out) + ' out of the whole-unit curves'
+        keep_out = st.toggle(label, value=True, key=f'wb_out_{a.line_key}',
+                             help='Their hours still count as lost running time. Only their stops are left out of the curve.')
+        leave_out = default_out if keep_out else ()
+    all_w = runner.weibull_all(a, beta, leave_out)
+    drawable = {u: w for u, w in all_w.items() if w.curves is not None and w.running > 0}
+    if not drawable:
+        st.caption('No unit has enough counted stops for a curve.')
+        return
+    table = pd.DataFrame([w.summary for w in drawable.values()])
+
+    with st.container(key='wb_compare_card'):
+        _wb_head('All units', 'How long each unit runs before one of its own unplanned stops',
+                 'Ring = planned time counted as running. Dot = running time only, with the 80% range. Hover for the numbers.')
+        chart(charts.weibull_compare(table, short, mode), f'wbcmp_{a.line_key}')
+    shown = pd.DataFrame({
+        'Unit': table['Unit'].map(lambda u: short.get(u, u)),
+        'Stops counted': table['Own stops'].round(0),
+        'Typical run before a stop': table['Median run After (h)'].map(fmt_hours),
+        'Likely range': [f'{fmt_hours(lo)} to {fmt_hours(hi)}' for lo, hi in zip(table['Median After low (h)'], table['Median After high (h)'])],
+    })
+    with st.expander('Table'):
         show(shown)
-        if figs.get('units'):
-            h2('Weibull graph')
-            for png in figs['units'] + figs.get('attributed', []):
-                st.image(png, width='stretch')
-        st.caption('Each unit\'s typical run comes from its own running hours and stop count. Only the curve shape is fixed (1.5). One day is 24 hours.')
-        mostly_vague = [short.get(u, u) for u, w in all_w.items() if w.curves is not None and len(w.groups) and _vague_share(w) > 0.5]
-        if mostly_vague:
-            st.caption('Mostly unclear stops (Unknown, Minor stops), so times are short: ' + ', '.join(mostly_vague) + '.')
+
+    h2('Weibull graph')
+    units = list(drawable)
+    unit = units[0] if len(units) == 1 else st.radio('Unit', units, key=f'wb_unit_{a.line_key}', horizontal=True, format_func=lambda u: short.get(u, u),
+                                                     label_visibility='collapsed')
+    W = drawable[unit]
+    view = 'own'
+    attributed = None
+    if unit == L.reference:
+        try:
+            attributed = runner.weibull_live(a, unit, 'A_attributed', beta, ())
+        except Exception:
+            attributed = None
+        if attributed is not None and (attributed.curves is None or attributed.running <= 0):
+            attributed = None
+    if attributed is not None:
+        view = st.radio('View', ['own', 'comments'], key=f'wb_view_{a.line_key}', horizontal=True,
+                        format_func=lambda v: 'Own log' if v == 'own' else 'Comments blamed on units', label_visibility='collapsed')
+    if view == 'own':
+        md(_wb_cards(W))
+        S = W.summary
+        with st.container(key='wb_unit_card'):
+            _wb_head(f'{short.get(unit, unit)}  ·  own log', f'Half of runs reach {fmt_hours(S["Median run After (h)"])} before any own unplanned stop',
+                     f'Shape {W.beta:g} assumed. Dashed = planned time counted as running. Solid and shaded = running time only.')
+            chart(charts.weibull_unit_curve(W, S, mode), f'wbunit_{a.line_key}_{unit}')
+        if str(S.get('Evidence', 'OK')) != 'OK':
+            st.caption(f'Evidence: {S["Evidence"]}.')
+        identified = W.groups[W.groups['Kind'] == 'Identified cause'].nlargest(3, 'Hours') if len(W.groups) else W.groups
+        if len(identified):
+            with st.container(key='wb_cause_card'):
+                _wb_head('By cause', f'The {len(identified)} largest identified cause' + ('s' if len(identified) > 1 else ''),
+                         'Same reading: the further a line stays up and right, the longer that cause lets the unit run.')
+                chart(charts.weibull_cause_curves(W, identified, mode), f'wbcause_{a.line_key}_{unit}')
+    else:
+        groups = attributed.groups[attributed.groups['Kind'] == 'Identified cause'].nlargest(3, 'Hours') if len(attributed.groups) else attributed.groups
+        if len(groups):
+            with st.container(key='wb_cause_card'):
+                _wb_head(f'{short.get(unit, unit)}  ·  comments blamed on units', f'The {len(groups)} largest source' + ('s' if len(groups) > 1 else ''),
+                         'Each Roaster comment is filed under the unit it names.')
+                chart(charts.weibull_cause_curves(attributed, groups, mode), f'wbattr_{a.line_key}_{unit}')
+        else:
+            st.caption('No identified source has a stop count, so no curve is drawn.')
+    st.caption('Each unit\'s typical run comes from its own running hours and stop count. Only the curve shape is fixed (' + f'{beta:g}' + '). One day is 24 hours.')
+    mostly_vague = [short.get(u, u) for u, w in drawable.items() if len(w.groups) and _vague_share(w) > 0.5]
+    if mostly_vague:
+        st.caption('Mostly unclear stops (Unknown, Minor stops), so times are short: ' + ', '.join(mostly_vague) + '.')
 
 
 def _vague_share(W):
