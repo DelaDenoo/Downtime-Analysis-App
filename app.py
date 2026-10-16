@@ -6434,6 +6434,60 @@ def weibull_compare(table, short, mode):
     fig = _base(fig, mode, height=max(260, 50 * len(names) + 130), margin=dict(l=8, r=18, t=10, b=8))
     fig.update_layout(hovermode='closest')
     return fig
+
+
+def event_bars(events, mode):
+    """Number of logged downtime events per unit, planned and unplanned stacked, with the total at the end of each bar."""
+    p = PAL[mode]
+    d = events.iloc[::-1]
+    fig = go.Figure()
+    for col, name, color in (('Unplanned events', 'Unplanned', p['main']), ('Planned events', 'Planned', p['grey'])):
+        fig.add_trace(go.Bar(y=d['Unit'], x=d[col], orientation='h', name=name, marker_color=color,
+                             hovertemplate='%{y}<br>' + name + ' %{x:,.0f} events<extra></extra>'))
+    fig.add_trace(go.Scatter(x=d['Total events'], y=d['Unit'], mode='text', text=[f'{v:,.0f}' for v in d['Total events']], textposition='middle right',
+                             textfont=dict(color=p['ink'], size=12), hoverinfo='skip', showlegend=False, cliponaxis=False))
+    fig.update_layout(barmode='stack', legend=dict(traceorder='normal'))
+    fig.update_xaxes(title_text='Logged downtime events', range=[0, float(d['Total events'].max()) * 1.15])
+    fig.update_yaxes(type='category', showgrid=False)
+    return _base(fig, mode, height=max(260, 46 * len(d) + 110), margin=dict(l=8, r=30, t=10, b=8))
+
+
+def hours_bars(units_overall, short, reference, mode):
+    """Logged downtime hours per unit as upright bars; the reference unit (the Roaster) in the coral accent, the others in blue."""
+    p = PAL[mode]
+    d = units_overall.copy()
+    names = [short.get(u, u) for u in d['Unit']]
+    hours = d['Downtime (hrs)'].astype(float).to_numpy()
+    colours = [p['coral'] if u == reference else p['alt'] for u in d['Unit']]
+    fig = go.Figure(go.Bar(x=names, y=hours, marker_color=colours, text=[f'{h:,.0f}' for h in hours], textposition='outside',
+                           textfont=dict(color=p['ink'], size=12), cliponaxis=False, customdata=np.stack([hours / 24], axis=1),
+                           hovertemplate='%{x}<br>%{y:,.0f} hours (%{customdata[0]:,.1f} days)<extra></extra>'))
+    fig.update_yaxes(title_text='Logged downtime in window (hours)', range=[0, float(hours.max()) * 1.12], tickformat=',')
+    fig.update_xaxes(type='category', showgrid=False)
+    fig = _base(fig, mode, height=380, legend=False, margin=dict(l=8, r=18, t=18, b=8))
+    fig.update_layout(hovermode='closest')
+    return fig
+
+
+def monthly_bars(monthly, overall_value, measure, mode):
+    """One bar per month for `measure` ('Availability (%)' or 'Calendar Availability (%)'), with the days under each month and the
+    whole-window figure as a dashed line. Months below the whole-window figure are orange, the rest blue (the notebook's chart)."""
+    p = PAL[mode]
+    d = monthly.reset_index(drop=True)
+    values = d[measure].astype(float).to_numpy()
+    labels = [f'{pd.Timestamp(m + "-01"):%b %Y}<br>({int(n)} d)' for m, n in zip(d['Month'], d['Days'])]
+    colours = [p['main'] if v < overall_value else p['alt'] for v in values]
+    name = measure.replace(' (%)', '')
+    fig = go.Figure(go.Bar(x=labels, y=values, marker_color=colours, text=[f'{v:.1f}' for v in values], textposition='outside',
+                           textfont=dict(color=p['ink'], size=12), cliponaxis=False,
+                           hovertemplate='%{x}<br>' + name + ' %{y:.1f}%<extra></extra>', showlegend=False))
+    fig.add_hline(y=overall_value, line=dict(color=p['ink'], width=1.4, dash='dash'), annotation_text=f'Overall {overall_value:.1f}%',
+                  annotation_position='bottom right', annotation_font=dict(color=p['ink'], size=12))
+    fig.update_yaxes(range=[0, 105], title_text=name + ' (%)', tickvals=[0, 20, 40, 60, 80, 100])
+    fig.update_xaxes(type='category', showgrid=False)
+    fig = _base(fig, mode, height=380, legend=False, margin=dict(l=8, r=18, t=18, b=8))
+    fig.update_layout(hovermode='closest')
+    return fig
 ''',
 # ====================================================================================================
 # module ui.table
@@ -6700,6 +6754,23 @@ def render_glance(a):
     md(guide.glance_html(short_of(a).get(unit, unit), cards))
 
 
+
+def events_table(a):
+    """Logged downtime events per unit (the Count column of each unit's own reason log), split planned and unplanned."""
+    L = a.L
+    rows = []
+    for u in L.units:
+        if u not in L.logs:
+            continue
+        log = L.logs[u]
+        planned_mask = log['Class'].isin(['Planned non-production', 'Planned maintenance'])
+        total, planned = float(log['Count'].sum()), float(log.loc[planned_mask, 'Count'].sum())
+        hours = float(log['Duration_hours'].sum())
+        days = max(len(L.daily_full[u]), 1) if hasattr(L, 'daily_full') and u in L.daily_full else max(len(L.dfs[u]), 1)
+        rows.append({'Unit': short_of(a).get(u, u), 'Total events': total, 'Unplanned events': total - planned, 'Planned events': planned,
+                     'Events per day': total / days, 'Average length': fmt_hours(hours / total) if total > 0 else 'n/a'})
+    return pd.DataFrame(rows)
+
 # ---------------------------------------------------------------------------------------------- Availability & Integrity
 def render_integrity(a, mode):
     L = a.L
@@ -6727,6 +6798,11 @@ def render_integrity(a, mode):
         chart(charts.class_share_bars(shares, mode), f'shares_{a.line_key}_{unit}')
 
     overall = table_for(a, 'units_overall')
+    if len(overall) and 'Downtime (hrs)' in overall.columns:
+        ref = getattr(L, 'reference', None)
+        h2('Hours logged per unit' + (f' ({short_of(a).get(ref, ref)} in red)' if ref in set(overall['Unit']) else ''))
+        chart(charts.hours_bars(overall, short_of(a), ref, mode), f'hours_{a.line_key}')
+        st.caption('Total logged downtime in the analysis window, from each unit\'s daily column. Months you leave out are not counted. One day is 24 hours.')
     if len(overall):
         h2('All units')
         chart(charts.availability_bars(overall, short_of(a), mode), f'avail_{a.line_key}')
@@ -6736,10 +6812,33 @@ def render_integrity(a, mode):
             three['Unit'] = three['Unit'].map(lambda u: short_of(a).get(u, u))
             show(three.round(1))
 
+    ev = events_table(a)
+    if len(ev) and ev['Total events'].max() > 0:
+        h2('Downtime events per unit')
+        chart(charts.event_bars(ev, mode), f'events_{a.line_key}')
+        st.caption('Counted from each unit\'s own reason log, which covers the whole file and has no dates. Reasons logged without a count add nothing here.')
+        with st.expander('Table'):
+            shown_ev = ev.copy()
+            for c in ('Total events', 'Unplanned events', 'Planned events'):
+                shown_ev[c] = shown_ev[c].round(0)
+            show(shown_ev.round({'Events per day': 1}))
+        no_log = [short_of(a).get(u, u) for u in L.units if u not in L.logs]
+        if no_log:
+            st.caption('No reason log, so no event count: ' + ', '.join(no_log) + '.')
+
     monthly = table_for(a, 'units_monthly', unit)
     if len(monthly):
         h2('By month')
-        chart(charts.monthly_lines(monthly, unit, mode), f'monthly_{a.line_key}_{unit}')
+        overall_row = overall[overall['Unit'] == unit] if len(overall) else overall
+        for measure in ('Availability (%)', 'Calendar Availability (%)'):
+            if measure not in monthly.columns or not len(overall_row):
+                continue
+            vals = monthly.set_index('Month')[measure]
+            name = measure.replace(' (%)', '')
+            md(f'<div class="dc-wb-title">{name} by month: lowest {pd.Timestamp(vals.idxmin() + "-01"):%b %Y} ({vals.min():.1f}%), '
+               f'highest {pd.Timestamp(vals.idxmax() + "-01"):%b %Y} ({vals.max():.1f}%)</div>')
+            chart(charts.monthly_bars(monthly, float(overall_row[measure].iloc[0]), measure, mode), f'monthly_{measure[:4]}_{a.line_key}_{unit}')
+        st.caption('Orange months are below the whole-window figure (dashed line). Every month uses the unit\'s whole-log planned and unplanned shares, because the reason log has no dates. The first and last months can be partial; see the days under each month.')
 
     frames = {short_of(a).get(u, u): L.dfs[u] for u in L.units if u in L.dfs and len(L.dfs[u])}
     if frames:
