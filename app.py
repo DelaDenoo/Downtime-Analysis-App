@@ -5635,12 +5635,19 @@ section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] svg { colo
 .dc-metric-value { font-size: 2.35rem; font-weight: 780; color: var(--ink); margin: 10px 0 4px; line-height: 1; letter-spacing: -0.032em; font-variant-numeric: tabular-nums; }
 .dc-metric-value small { font-size: 1.05rem; letter-spacing: -0.01em; font-weight: 650; color: var(--sub-text); margin-left: 2px; }
 .dc-metric-sub { font-size: 0.78rem; color: var(--sub-text); line-height: 1.4; }
-.dc-avail-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.dc-avail-name { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sub-text); }
-.dc-avail-val { font-size: 1.35rem; font-weight: 760; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-.dc-avail-q { font-size: 0.95rem; font-weight: 650; color: var(--ink); margin: 8px 0 6px; line-height: 1.3; }
-.dc-avail-x, .dc-avail-use { font-size: 0.83rem; line-height: 1.5; color: var(--sub-text); }
-.dc-avail-use { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--ink); }
+.dc-metric { position: relative; }
+.dc-help { margin-top: 10px; }
+.dc-help-btn { list-style: none; cursor: pointer; position: absolute; top: 22px; right: 58px; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; font-weight: 700; line-height: 1; color: var(--sub-text); border: 1.5px solid var(--sub); background: transparent; user-select: none;
+  transition: background .2s var(--settle), color .2s var(--settle), border-color .2s var(--settle); }
+.dc-help-btn::-webkit-details-marker { display: none; }
+.dc-help-btn::marker { content: ""; }
+.dc-help-btn:hover, .dc-help[open] .dc-help-btn { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.dc-help-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.dc-help-body { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border); text-align: left; }
+.dc-help-h { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sub-text); margin: 10px 0 2px; }
+.dc-help-h:first-child { margin-top: 0; }
+.dc-help-t { font-size: 0.83rem; line-height: 1.5; color: var(--ink); }
 
 .dc-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 0.5rem 0 0.4rem; }
 .dc-stat { background: var(--gray-tint); border-radius: 14px; padding: 12px 15px; }
@@ -5918,14 +5925,17 @@ def dc_card_head(icon_svg, title, subtitle, variant='orange', step=None, tag=Non
     )
 
 
-def dc_metric_card(label, value, sub, icon_svg, variant='orange', unit=''):
+def dc_metric_card(label, value, sub, icon_svg, variant='orange', unit='', help_html=''):
+    """`help_html` (already-escaped HTML) adds a small ? button; clicking it opens the explanation inside the card, clicking again closes it."""
     unit_html = f'<small>{esc(unit)}</small>' if unit else ''
+    help_part = (f'<details class="dc-help"><summary class="dc-help-btn" title="What does this mean?" aria-label="What does {esc(label)} mean?">?</summary>'
+                 f'<div class="dc-help-body">{help_html}</div></details>') if help_html else ''
     return (
         f'<div class="dc-card dc-metric"><div class="dc-metric-top">'
         f'<span class="dc-metric-label">{esc(label)}</span>'
         f'<div class="dc-icon-sq dc-icon-sq-{variant}" style="width:30px;height:30px;">{icon_svg}</div>'
         f'</div><div class="dc-metric-value">{esc(value)}{unit_html}</div>'
-        f'<div class="dc-metric-sub">{esc(sub)}</div></div>'
+        f'<div class="dc-metric-sub">{esc(sub)}</div>{help_part}</div>'
     )
 
 
@@ -6009,29 +6019,42 @@ def glance_html(unit_name, cards):
             f'<div class="dc-glance-grid dc-glance-n{len(cards)}">{items}</div></div>')
 
 
-def availability_explainer_html(M):
-    """The three availabilities in plain words, each with this unit's own numbers. M comes from compute_metrics."""
+def availability_help(M, pm_excluded=False):
+    """Help text for the three availability cards, as escaped HTML: textbook definition, plain words, this unit's numbers, when to use it.
+    Returns a dict keyed by the card name."""
     def h(v):
         return f'{v:,.0f} h'
-    items = [
-        ('Availability', f'{M.availability:.1f}%', 'Did the line run when it was supposed to?',
-         f'Of the {h(M.planned_production)} set aside for production, the line ran {h(M.running)}. The missing {h(M.unplanned)} was unplanned stops.',
-         'Use it to judge how reliable the equipment is. If it is low, go after breakdowns, waiting and short stops.'),
-        ('Calendar Availability', f'{M.calendar_availability:.1f}%', 'How much of the whole calendar did we get?',
-         f'Out of all {h(M.time_base)} on the calendar, the line ran {h(M.running)}. Planned stops count against it here too.',
-         'Use it to see the real output you got from the plant, for example when someone asks "how much of the month was it actually running?"'),
-        ('Utilization', f'{M.utilization:.1f}%', 'How much time did we plan to produce at all?',
-         f'Of the {h(M.time_base)} on the calendar, {h(M.planned_production)} was planned for production. The other {h(M.planned)} was planned stops such as cleaning, changeovers, planned maintenance or no orders.',
-         'Use it to check the plan, not the machines. If it is low, look at scheduling and planned stops before blaming breakdowns.'),
-    ]
-    cards = ''.join(
-        f'<div class="dc-card dc-avail"><div class="dc-avail-top"><span class="dc-avail-name">{esc(name)}</span><span class="dc-avail-val">{esc(val)}</span></div>'
-        f'<div class="dc-avail-q">{esc(q)}</div><div class="dc-avail-x">{esc(example)}</div><div class="dc-avail-use">{esc(use)}</div></div>'
-        for name, val, q, example, use in items)
-    link = (f'Availability {M.availability:.1f}% x Utilization {M.utilization:.1f}% = Calendar Availability {M.calendar_availability:.1f}%. '
-            'So when Calendar Availability looks poor, check which of the other two is pulling it down: low Availability means the line broke down, '
-            'low Utilization means it was not planned to run.')
-    return f'<div class="dc-grid">{cards}</div><div class="dc-note" style="margin-top:0.8rem">{esc(link)}</div>'
+    base = (f'the {h(M.time_base)} on the calendar, not counting planned maintenance' if pm_excluded else f'all {h(M.time_base)} on the calendar')
+    rows = {
+        'Availability': (
+            'The proportion of scheduled production time during which the equipment is in an operating state. Operating time divided by planned production time.',
+            'When the line was supposed to run, how much of that time did it actually run? Breakdowns and other unplanned stops are what pull it down.',
+            f'It was meant to run {h(M.planned_production)} and ran {h(M.running)}. The missing {h(M.unplanned)} was unplanned stops.',
+            'Use it to judge how reliable the equipment is. If it is low, go after breakdowns, waiting and short stops.'),
+        'Calendar Availability': (
+            'The proportion of total calendar time during which the equipment is operating. Operating time divided by total calendar time. Also called total effective availability.',
+            'Forget the plan and look at the clock. Out of every hour that passed, how many hours was the line running? Breakdowns and planned stops both count against it.',
+            f'Out of {base}, the line ran {h(M.running)}.',
+            'Use it for the real output you got, for example when someone asks "how much of the month was it actually running?"'),
+        'Utilization': (
+            'The proportion of total calendar time that is scheduled for production. Planned production time divided by total calendar time. Also called loading.',
+            'How much of the time did we intend to run the line at all? It says nothing about breakdowns. It only reflects the plan: planned maintenance, cleaning, changeovers, no orders.',
+            f'{h(M.planned_production)} of {base} was planned for production. The other {h(M.planned)} was planned stops.',
+            'Use it to check the plan, not the machines. If it is low, look at scheduling and planned stops before blaming breakdowns.'),
+    }
+    out = {}
+    for name, (textbook, plain, numbers, use) in rows.items():
+        out[name] = (f'<div class="dc-help-h">Textbook definition</div><div class="dc-help-t">{esc(textbook)}</div>'
+                     f'<div class="dc-help-h">In plain words</div><div class="dc-help-t">{esc(plain)}</div>'
+                     f'<div class="dc-help-h">Your numbers</div><div class="dc-help-t">{esc(numbers)}</div>'
+                     f'<div class="dc-help-h">When to use it</div><div class="dc-help-t">{esc(use)}</div>')
+    return out
+
+
+def availability_link_note(M):
+    return (f'Availability {M.availability:.1f}% x Utilization {M.utilization:.1f}% = Calendar Availability {M.calendar_availability:.1f}%. '
+            'Press the ? on a card to see what it means. If Calendar Availability looks poor, check which of the other two is pulling it down: '
+            'low Availability means the line broke down, low Utilization means it was not planned to run.')
 ''',
 # ====================================================================================================
 # module ui.charts
@@ -6858,13 +6881,13 @@ def render_integrity(a, mode):
     L = a.L
     unit = headline_unit(a, f'ov_unit_{a.line_key}')
     M = L.metrics[unit]
+    helps = guide.availability_help(M, pm_excluded=a.options.get('planned_maintenance') == 'exclude_from_calculation')
     md(metric_grid([
-        dc_metric_card('Availability', fmt_pct(M.availability), 'of planned production time', _ICON_GAUGE, 'orange', '%'),
-        dc_metric_card('Calendar Availability', fmt_pct(M.calendar_availability), 'of the full time base', _ICON_CLOCK, 'green', '%'),
-        dc_metric_card('Utilization', fmt_pct(M.utilization), 'of the time base planned for production', _ICON_BAR_CHART, 'coral', '%'),
+        dc_metric_card('Availability', fmt_pct(M.availability), 'of planned production time', _ICON_GAUGE, 'orange', '%', helps['Availability']),
+        dc_metric_card('Calendar Availability', fmt_pct(M.calendar_availability), 'of the full time base', _ICON_CLOCK, 'green', '%', helps['Calendar Availability']),
+        dc_metric_card('Utilization', fmt_pct(M.utilization), 'of the time base planned for production', _ICON_BAR_CHART, 'coral', '%', helps['Utilization']),
     ]))
-    with st.expander('What do these three numbers mean?', expanded=True):
-        md(guide.availability_explainer_html(M))
+    st.caption(guide.availability_link_note(M))
     if M.pm and M.pm > 0:
         if a.options.get('planned_maintenance') == 'exclude_from_calculation':
             st.caption(f'Planned maintenance left out: {M.pm:,.0f} h.')
