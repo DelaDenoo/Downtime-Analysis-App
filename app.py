@@ -5740,7 +5740,7 @@ div[data-testid="stExpander"] summary { font-weight: 620; color: var(--ink); }
 .dc-glance { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 18px 20px 20px; margin: 0.2rem 0 1.1rem; box-shadow: var(--shadow); }
 .dc-glance-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .dc-glance-title { font-size: 1.12rem; font-weight: 720; letter-spacing: -0.016em; color: var(--ink); }
-.dc-glance-for { font-size: 0.82rem; color: var(--sub-text); }
+.dc-glance-for { font-size: 1.12rem; font-weight: 720; letter-spacing: -0.016em; color: var(--ink); }
 .dc-glance-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .dc-glance-n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .dc-glance-n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -6014,8 +6014,8 @@ def glance_html(unit_name, cards):
         f'<div class="dc-glance-item"><div class="dc-glance-q"><span class="dc-glance-ic">{icon}</span>{esc(q)}</div>'
         f'<div class="dc-glance-a">{esc(a)}</div><div class="dc-glance-x">{esc(x)}</div></div>'
         for icon, q, a, x in cards)
-    return (f'<div class="dc-glance"><div class="dc-glance-head"><span class="dc-glance-title">Summary</span>'
-            f'<span class="dc-glance-for">{esc(unit_name)}</span></div>'
+    return (f'<div class="dc-glance"><div class="dc-glance-head"><span class="dc-glance-title">Line Summary</span>'
+            f'<span class="dc-glance-for">{esc(unit_name)} Centered</span></div>'
             f'<div class="dc-glance-grid dc-glance-n{len(cards)}">{items}</div></div>')
 
 
