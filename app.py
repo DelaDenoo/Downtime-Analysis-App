@@ -159,22 +159,24 @@ plt.rcParams.update(
         'legend.frameon': False,
     }
 )
+# Colours for the report and PDF charts. Picked from a colour-blind-safe set (blue, orange, aqua, violet, yellow, pink) so the bars stay apart
+# for the common kinds of colour blindness. Red and green are not used together. 'warn' is violet on purpose: it is a series colour, not a signal.
 COLOR = {
-    'headline': '#d64545',
-    'unit': '#4a7a96',
-    'good': '#3f8f6d',
-    'warn': '#e08a3c',
+    'headline': '#eb6834',   # the unit in focus (orange)
+    'unit': '#2a78d6',       # other units (blue)
+    'good': '#1baf7a',       # aqua
+    'warn': '#6250d6',       # violet
     'grey': '#9aa5ad',
     'dark': '#5b6770',
 }
 UNIT_PALETTE = [
-    '#d64545',
-    '#4a7a96',
-    '#3f8f6d',
-    '#e08a3c',
-    '#7a4f9e',
-    '#2e8b8b',
-    '#c98a3a',
+    '#eb6834',
+    '#2a78d6',
+    '#1baf7a',
+    '#6250d6',
+    '#eda100',
+    '#e87ba4',
+    '#008300',
     '#8c6d46',
 ]
 
@@ -5633,6 +5635,12 @@ section[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] svg { colo
 .dc-metric-value { font-size: 2.35rem; font-weight: 780; color: var(--ink); margin: 10px 0 4px; line-height: 1; letter-spacing: -0.032em; font-variant-numeric: tabular-nums; }
 .dc-metric-value small { font-size: 1.05rem; letter-spacing: -0.01em; font-weight: 650; color: var(--sub-text); margin-left: 2px; }
 .dc-metric-sub { font-size: 0.78rem; color: var(--sub-text); line-height: 1.4; }
+.dc-avail-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.dc-avail-name { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sub-text); }
+.dc-avail-val { font-size: 1.35rem; font-weight: 760; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.dc-avail-q { font-size: 0.95rem; font-weight: 650; color: var(--ink); margin: 8px 0 6px; line-height: 1.3; }
+.dc-avail-x, .dc-avail-use { font-size: 0.83rem; line-height: 1.5; color: var(--sub-text); }
+.dc-avail-use { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--ink); }
 
 .dc-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 0.5rem 0 0.4rem; }
 .dc-stat { background: var(--gray-tint); border-radius: 14px; padding: 12px 15px; }
@@ -5999,6 +6007,31 @@ def glance_html(unit_name, cards):
     return (f'<div class="dc-glance"><div class="dc-glance-head"><span class="dc-glance-title">Summary</span>'
             f'<span class="dc-glance-for">{esc(unit_name)}</span></div>'
             f'<div class="dc-glance-grid dc-glance-n{len(cards)}">{items}</div></div>')
+
+
+def availability_explainer_html(M):
+    """The three availabilities in plain words, each with this unit's own numbers. M comes from compute_metrics."""
+    def h(v):
+        return f'{v:,.0f} h'
+    items = [
+        ('Availability', f'{M.availability:.1f}%', 'Did the line run when it was supposed to?',
+         f'Of the {h(M.planned_production)} set aside for production, the line ran {h(M.running)}. The missing {h(M.unplanned)} was unplanned stops.',
+         'Use it to judge how reliable the equipment is. If it is low, go after breakdowns, waiting and short stops.'),
+        ('Calendar Availability', f'{M.calendar_availability:.1f}%', 'How much of the whole calendar did we get?',
+         f'Out of all {h(M.time_base)} on the calendar, the line ran {h(M.running)}. Planned stops count against it here too.',
+         'Use it to see the real output you got from the plant, for example when someone asks "how much of the month was it actually running?"'),
+        ('Utilization', f'{M.utilization:.1f}%', 'How much time did we plan to produce at all?',
+         f'Of the {h(M.time_base)} on the calendar, {h(M.planned_production)} was planned for production. The other {h(M.planned)} was planned stops such as cleaning, changeovers, planned maintenance or no orders.',
+         'Use it to check the plan, not the machines. If it is low, look at scheduling and planned stops before blaming breakdowns.'),
+    ]
+    cards = ''.join(
+        f'<div class="dc-card dc-avail"><div class="dc-avail-top"><span class="dc-avail-name">{esc(name)}</span><span class="dc-avail-val">{esc(val)}</span></div>'
+        f'<div class="dc-avail-q">{esc(q)}</div><div class="dc-avail-x">{esc(example)}</div><div class="dc-avail-use">{esc(use)}</div></div>'
+        for name, val, q, example, use in items)
+    link = (f'Availability {M.availability:.1f}% x Utilization {M.utilization:.1f}% = Calendar Availability {M.calendar_availability:.1f}%. '
+            'So when Calendar Availability looks poor, check which of the other two is pulling it down: low Availability means the line broke down, '
+            'low Utilization means it was not planned to run.')
+    return f'<div class="dc-grid">{cards}</div><div class="dc-note" style="margin-top:0.8rem">{esc(link)}</div>'
 ''',
 # ====================================================================================================
 # module ui.charts
@@ -6006,23 +6039,36 @@ def glance_html(unit_name, cards):
 'ui.charts': r'''"""Plain Plotly charts: bars and lines only. Every function takes plain data plus `mode` ('light' or 'dark') and returns a figure.
 
 Colour rules (dataviz): text is always ink, never the series colour; a legend is always shown for two or more series;
-no dual axes; categories keep a fixed order. The three chromatic slots below passed the palette validator in both modes
-(orange-brown / blue / green); greys carry the "other" and "before" roles.
+no dual axes; categories keep a fixed order. Colours are chosen to stay apart for the common kinds of colour blindness:
+blue / orange / aqua (and violet as a fourth) from the validated categorical palette, plus greys for "planned" and "other".
+Colour is never the only cue: bars also carry a pattern (diagonal, dots, cross) and a value label, and charts that compare
+groups have a legend. Anything that goes from "less" to "more" (the forecast) uses one hue from light to dark instead of
+red / amber / green.
 """
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
 PAL = {
-    # light: the old dashboard's cream palette. The three data colours (orange-brown, blue, green) passed the palette validator
-    # together; the brand orange #B9743D is kept for single-series accents and the interface.
-    'light': dict(ink='#2A241C', ink2='#6F6554', ink3='#8F8471', grid='rgba(60,40,10,0.08)', brand='#B9743D', main='#9C5F2E', alt='#3E6FB0',
-                  third='#2F8F63', coral='#B76552', grey='#8F8471', pale='#D9CFBD', paper='rgba(0,0,0,0)', tip='#FFFFFF', band='rgba(156,95,46,0.18)'),
-    'dark': dict(ink='#F4ECDD', ink2='#BDB19A', ink3='#A89B84', grid='rgba(244,236,221,0.10)', brand='#C97B3F', main='#C97B3F', alt='#4F86CC',
-                 third='#3FA877', coral='#D98A76', grey='#A89B84', pale='#4A4032', paper='rgba(0,0,0,0)', tip='#2D261D', band='rgba(201,123,63,0.28)'),
+    # Validated with the dataviz palette checker against the cream page colour (light) and the dark page colour (dark).
+    # main = orange, alt = blue, third = aqua, fourth = violet; coral is the "look here" accent and is the same orange.
+    # ord1..3 is a one-hue orange ramp for ordered values (good case, most likely, bad case).
+    'light': dict(ink='#2A241C', ink2='#6F6554', ink3='#8F8471', grid='rgba(60,40,10,0.08)', brand='#B9743D', main='#EB6834', alt='#2A78D6',
+                  third='#1BAF7A', fourth='#6250D6', coral='#EB6834', grey='#8F8471', pale='#D9CFBD', paper='rgba(0,0,0,0)', tip='#FFFFFF',
+                  band='rgba(235,104,52,0.18)', ord1='#F6BFA3', ord2='#EB6834', ord3='#9A3B14', hatch='rgba(255,255,255,0.65)'),
+    'dark': dict(ink='#F4ECDD', ink2='#BDB19A', ink3='#A89B84', grid='rgba(244,236,221,0.10)', brand='#C97B3F', main='#D95926', alt='#3987E5',
+                 third='#199E70', fourth='#9085E9', coral='#D95926', grey='#A89B84', pale='#4A4032', paper='rgba(0,0,0,0)', tip='#2D261D',
+                 band='rgba(217,89,38,0.28)', ord1='#7D3C1F', ord2='#D95926', ord3='#F3AE8D', hatch='rgba(23,19,14,0.55)'),
 }
 FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif'
 CONFIG = {'displayModeBar': False, 'responsive': True, 'scrollZoom': False}
+
+
+def _fill(color, shape, mode):
+    """Bar fill: the series colour, optionally with a pattern ('/', '\\\\', 'x', '.', '+') as a second cue besides colour."""
+    if not shape:
+        return dict(color=color)
+    return dict(color=color, pattern=dict(shape=shape, bgcolor=color, fgcolor=PAL[mode]['hatch'], size=7, solidity=0.4))
 
 
 def _base(fig, mode, height=380, legend=True, margin=None):
@@ -6095,9 +6141,9 @@ def availability_bars(units_overall, short, mode):
     d['name'] = d['Unit'].map(lambda u: short.get(u, u))
     d = d.iloc[::-1]
     fig = go.Figure()
-    measures = [('Utilization (%)', 'Utilization', p['third'])] if 'Utilization (%)' in d.columns else []
-    for col, name, color in (*measures, ('Calendar Availability (%)', 'Calendar Availability', p['alt']), ('Availability (%)', 'Availability', p['main'])):
-        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker_color=color, text=[f'{v:.1f}%' for v in d[col]],
+    measures = [('Utilization (%)', 'Utilization', p['third'], '.')] if 'Utilization (%)' in d.columns else []
+    for col, name, color, shape in (*measures, ('Calendar Availability (%)', 'Calendar Availability', p['alt'], '/'), ('Availability (%)', 'Availability', p['main'], '')):
+        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker=_fill(color, shape, mode), text=[f'{v:.1f}%' for v in d[col]],
                              textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
                              hovertemplate='%{y}<br>' + name + ' %{x:.1f}%<extra></extra>'))
     fig.update_layout(barmode='group', legend=dict(traceorder='reversed'))
@@ -6129,8 +6175,11 @@ def class_share_bars(class_table, mode):
         return go.Figure()
     share = hours / total * 100
     names = [_wrap(n, 26) for n in d['Counted as']]
-    colours = [p['coral'] if str(n).startswith('Unplanned') else p['grey'] if str(n).startswith('Planned') else p['pale'] for n in d['Counted as']]
-    fig = go.Figure(go.Bar(y=names[::-1], x=share[::-1], orientation='h', marker_color=colours[::-1],
+    fills = [_fill(p['coral'], '', mode) if str(n).startswith('Unplanned') else _fill(p['grey'], '/', mode) if str(n).startswith('Planned')
+             else _fill(p['pale'], '.', mode) for n in d['Counted as']]
+    fig = go.Figure(go.Bar(y=names[::-1], x=share[::-1], orientation='h', marker=dict(color=[f['color'] for f in fills[::-1]],
+                           pattern=dict(shape=[(f.get('pattern') or {}).get('shape', '') for f in fills[::-1]], bgcolor=[f['color'] for f in fills[::-1]],
+                                        fgcolor=p['hatch'], size=7, solidity=0.4)),
                            text=[f'{s:.1f}%  |  {_hd(h)}' for s, h in zip(share[::-1], hours[::-1])], textposition='outside',
                            textfont=dict(color=p['ink'], size=12), cliponaxis=False, hoverinfo='skip'))
     fig.update_xaxes(title_text='Share of logged downtime (%)', range=[0, 135], tickvals=[0, 25, 50, 75, 100], ticksuffix='%')
@@ -6165,8 +6214,8 @@ def themes_bar(themes, mode, top=12):
     waiting = d['Waiting_hours'].to_numpy()
     stops = (d['Hours'].to_numpy() - planned - waiting).clip(min=0)
     fig = go.Figure()
-    for values, name, color in ((stops, 'Stops and other unplanned', p['main']), (waiting, 'Waiting', p['third']), (planned, 'Planned', p['grey'])):
-        fig.add_trace(go.Bar(y=d['Theme'], x=values, orientation='h', name=name, marker_color=color,
+    for values, name, color, shape in ((stops, 'Stops and other unplanned', p['main'], ''), (waiting, 'Waiting', p['third'], '.'), (planned, 'Planned', p['grey'], '/')):
+        fig.add_trace(go.Bar(y=d['Theme'], x=values, orientation='h', name=name, marker=_fill(color, shape, mode),
                              hovertemplate='%{y}<br>' + name + ' %{x:,.1f} h<extra></extra>'))
     fig.update_layout(barmode='stack', legend=dict(traceorder='normal'))
     fig.update_xaxes(title_text='Logged hours')
@@ -6180,6 +6229,7 @@ def coverage_bars(coverage, short, mode):
     cols = [(c, color) for c, color in zip(
         ['Planned (%)', 'Equipment or process themes (%)', 'Waiting or supply (%)', None, 'No theme (%)'],
         [p['grey'], p['main'], p['third'], p['alt'], p['pale']])]
+    shapes = {'Planned (%)': '/', 'Equipment or process themes (%)': '', 'Waiting or supply (%)': '.', 'No theme (%)': ''}
     vague = [c for c in coverage.columns if c.startswith('Vague')][0]
     cols[3] = (vague, p['alt'])
     names = {'Planned (%)': 'Planned', 'Equipment or process themes (%)': 'Equipment or process', 'Waiting or supply (%)': 'Waiting or supply',
@@ -6187,7 +6237,7 @@ def coverage_bars(coverage, short, mode):
     y = [short.get(u, u) for u in coverage.index]
     fig = go.Figure()
     for col, color in cols:
-        fig.add_trace(go.Bar(y=y, x=coverage[col], orientation='h', name=names[col], marker_color=color,
+        fig.add_trace(go.Bar(y=y, x=coverage[col], orientation='h', name=names[col], marker=_fill(color, shapes.get(col, 'x'), mode),
                              hovertemplate='%{y}<br>' + names[col] + ' %{x:.1f}%<extra></extra>'))
     fig.update_layout(barmode='stack', legend=dict(traceorder='normal'))
     fig.update_xaxes(range=[0, 100], ticksuffix='%')
@@ -6196,19 +6246,26 @@ def coverage_bars(coverage, short, mode):
 
 
 def pareto_bars(pareto, mode, top=12):
-    """Biggest reasons with the running share of unplanned hours in the label (one axis, no second scale)."""
+    """Biggest reasons with the hours at the end of each bar (one axis, no second scale). Waiting reasons are aqua with dots."""
     p = PAL[mode]
     d = pareto.head(top).iloc[::-1]
-    colors = [p['third'] if w else p['main'] for w in d['waiting']]
-    fig = go.Figure(go.Bar(
-        y=d['Reason'], x=d['hours'], orientation='h', marker_color=colors, showlegend=False, name='Reasons',
-        text=[_hd(h) for h in d['hours']], textposition='outside',
-        textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
-        customdata=np.stack([d['events'], d['source']], axis=1),
-        hovertemplate='%{y}<br>%{x:,.1f} h, %{customdata[0]:,.0f} events<br>blamed on: %{customdata[1]}<extra></extra>'))
-    fig.update_yaxes(tickmode='array', tickvals=list(d['Reason']), ticktext=[_wrap(t, 32) for t in d['Reason']], showgrid=False)
+    waiting = d['waiting'].astype(bool).to_numpy()
+    fig = go.Figure()
+    for flag, name, color, shape in ((False, 'Stops and other unplanned', p['main'], ''), (True, 'Waiting', p['third'], '.')):
+        sel = waiting == flag
+        if not sel.any():
+            continue
+        e = d[sel]
+        fig.add_trace(go.Bar(
+            y=e['Reason'], x=e['hours'], orientation='h', marker=_fill(color, shape, mode), name=name,
+            text=[_hd(h) for h in e['hours']], textposition='outside', textfont=dict(color=p['ink2'], size=11), cliponaxis=False,
+            customdata=np.stack([e['events'], e['source']], axis=1),
+            hovertemplate='%{y}<br>%{x:,.1f} h, %{customdata[0]:,.0f} events<br>blamed on: %{customdata[1]}<extra></extra>'))
+    fig.update_layout(barmode='overlay')
+    fig.update_yaxes(tickmode='array', tickvals=list(d['Reason']), ticktext=[_wrap(t, 32) for t in d['Reason']], showgrid=False, categoryorder='array',
+                     categoryarray=list(d['Reason']))
     fig.update_xaxes(title_text='Hours', range=[0, d['hours'].max() * 1.2])
-    return _base(fig, mode, height=max(320, 40 * len(d) + 120), legend=False, margin=dict(l=8, r=30, t=10, b=8))
+    return _base(fig, mode, height=max(320, 40 * len(d) + 120), margin=dict(l=8, r=30, t=10, b=8))
 
 
 def two_views_bars(two_views, mode):
@@ -6217,9 +6274,9 @@ def two_views_bars(two_views, mode):
     d = two_views.iloc[::-1]
     fig = go.Figure()
     fig.add_trace(go.Bar(y=d['Source'], x=d["From the unit's OWN log, unplanned (hrs)"], orientation='h', name="From the unit's own log",
-                         marker_color=p['main'], hovertemplate='%{y}<br>own log %{x:,.0f} h<extra></extra>'))
+                         marker=_fill(p['main'], '', mode), hovertemplate='%{y}<br>own log %{x:,.0f} h<extra></extra>'))
     fig.add_trace(go.Bar(y=d['Source'], x=d['From Roaster COMMENTS (hrs)'], orientation='h', name='From Roaster comments',
-                         marker_color=p['alt'], hovertemplate='%{y}<br>Roaster comments %{x:,.0f} h<extra></extra>'))
+                         marker=_fill(p['alt'], '/', mode), hovertemplate='%{y}<br>Roaster comments %{x:,.0f} h<extra></extra>'))
     fig.update_layout(barmode='group', bargap=0.3)
     fig.update_xaxes(title_text='Hours')
     fig.update_yaxes(showgrid=False)
@@ -6234,8 +6291,8 @@ def forecast_bars(forecast_units, short, mode):
     d['name'] = d['Unit'].map(lambda u: short.get(u, u))
     d = d.iloc[::-1]
     fig = go.Figure()
-    for col, name, color in (('Unplanned hrs P90', 'Bad case', p['coral']), ('Unplanned hrs P50', 'Most likely', p['main']), ('Unplanned hrs P10', 'Good case', p['third'])):
-        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker_color=color, text=[f'{v:,.0f}' for v in d[col]],
+    for col, name, color in (('Unplanned hrs P90', 'Bad case', p['ord3']), ('Unplanned hrs P50', 'Most likely', p['ord2']), ('Unplanned hrs P10', 'Good case', p['ord1'])):
+        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker=dict(color=color, line=dict(color=p['ink3'], width=0.8)), text=[f'{v:,.0f}' for v in d[col]],
                              textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
                              hovertemplate='%{y}<br>' + name + ' %{x:,.0f} h<extra></extra>'))
     fig.update_layout(barmode='group', legend=dict(traceorder='reversed'))
@@ -6251,8 +6308,8 @@ def backtest_bars(backtest, short, mode):
     d['name'] = d['Unit'].map(lambda u: short.get(u, u))
     d = d.iloc[::-1]
     fig = go.Figure()
-    for col, name, color in (('Actual (scaled, hrs)', 'Actual', p['alt']), ('Forecast P50', 'Forecast', p['main'])):
-        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker_color=color, text=[f'{v:,.0f}' for v in d[col]],
+    for col, name, color, shape in (('Actual (scaled, hrs)', 'Actual', p['alt'], ''), ('Forecast P50', 'Forecast', p['main'], '/')):
+        fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker=_fill(color, shape, mode), text=[f'{v:,.0f}' for v in d[col]],
                              textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
                              hovertemplate='%{y}<br>' + name + ' %{x:,.0f} h<extra></extra>'))
     fig.update_layout(barmode='group', legend=dict(traceorder='reversed'))
@@ -6372,7 +6429,7 @@ def weibull_unit_curve(W, summary, mode, probability_days=(1, 3, 7)):
             pts_y.append(float(_surv(24.0 * d, cv['After'], beta)) * 100)
             pts_t.append(f'{d} d: {pts_y[-1]:.0f}%')
     fig.add_trace(go.Scatter(x=pts_x, y=pts_y, mode='markers+text', text=pts_t, textposition='top right', textfont=dict(size=12, color=p['ink']),
-                             marker=dict(size=11, color=[p['coral']] + [p['main']] * (len(pts_x) - 1), line=dict(color=p['tip'], width=2)),
+                             marker=dict(size=11, color=[p['alt']] + [p['main']] * (len(pts_x) - 1), line=dict(color=p['tip'], width=2)),
                              showlegend=False, hoverinfo='skip', cliponaxis=False))
     _time_axis(fig, tmax)
     _survival_axes(fig)
@@ -6383,7 +6440,7 @@ def weibull_cause_curves(W, groups, mode):
     """The largest identified causes on one chart: dashed = Before, solid with a band = After."""
     p = PAL[mode]
     beta = W.beta
-    colours = [p['main'], p['alt'], p['third'], p['coral']]
+    colours = [p['alt'], p['main'], p['third'], p['fourth']]
     tmax = _tmax(list(groups['c Before']) + list(groups['c After low']), beta)
     t = np.linspace(0, tmax, 360)
     fig = go.Figure()
@@ -6449,8 +6506,8 @@ def event_bars(events, mode):
     p = PAL[mode]
     d = events.iloc[::-1]
     fig = go.Figure()
-    for col, name, color in (('Unplanned events', 'Unplanned', p['main']), ('Planned events', 'Planned', p['grey'])):
-        fig.add_trace(go.Bar(y=d['Unit'], x=d[col], orientation='h', name=name, marker_color=color,
+    for col, name, color, shape in (('Unplanned events', 'Unplanned', p['main'], ''), ('Planned events', 'Planned', p['grey'], '/')):
+        fig.add_trace(go.Bar(y=d['Unit'], x=d[col], orientation='h', name=name, marker=_fill(color, shape, mode),
                              hovertemplate='%{y}<br>' + name + ' %{x:,.0f} events<extra></extra>'))
     fig.add_trace(go.Scatter(x=d['Total events'], y=d['Unit'], mode='text', text=[f'{v:,.0f}' for v in d['Total events']], textposition='middle right',
                              textfont=dict(color=p['ink'], size=12), hoverinfo='skip', showlegend=False, cliponaxis=False))
@@ -6461,39 +6518,56 @@ def event_bars(events, mode):
 
 
 def hours_bars(units_overall, short, reference, mode):
-    """Logged downtime hours per unit as upright bars; the reference unit (the Roaster) in the coral accent, the others in blue."""
+    """Logged downtime hours per unit as upright bars; the reference unit (the Roaster) in orange, the others in blue with a pattern."""
     p = PAL[mode]
     d = units_overall.copy()
     names = [short.get(u, u) for u in d['Unit']]
     hours = d['Downtime (hrs)'].astype(float).to_numpy()
-    colours = [p['coral'] if u == reference else p['alt'] for u in d['Unit']]
-    fig = go.Figure(go.Bar(x=names, y=hours, marker_color=colours, text=[f'{h:,.0f}' for h in hours], textposition='outside',
-                           textfont=dict(color=p['ink'], size=12), cliponaxis=False, customdata=np.stack([hours / 24], axis=1),
-                           hovertemplate='%{x}<br>%{y:,.0f} hours (%{customdata[0]:,.1f} days)<extra></extra>'))
+    is_ref = np.array([u == reference for u in d['Unit']])
+    fig = go.Figure()
+    for flag, name, color, shape in ((True, reference_label(short, reference), p['coral'], ''), (False, 'Other units', p['alt'], '/')):
+        sel = is_ref == flag
+        if not sel.any():
+            continue
+        fig.add_trace(go.Bar(x=[n for n, k in zip(names, sel) if k], y=hours[sel], marker=_fill(color, shape, mode), name=name,
+                             text=[f'{h:,.0f}' for h in hours[sel]], textposition='outside', textfont=dict(color=p['ink'], size=12), cliponaxis=False,
+                             customdata=np.stack([hours[sel] / 24], axis=1),
+                             hovertemplate='%{x}<br>%{y:,.0f} hours (%{customdata[0]:,.1f} days)<extra></extra>'))
+    fig.update_layout(barmode='overlay')
     fig.update_yaxes(title_text='Logged downtime in window (hours)', range=[0, float(hours.max()) * 1.12], tickformat=',')
-    fig.update_xaxes(type='category', showgrid=False)
-    fig = _base(fig, mode, height=380, legend=False, margin=dict(l=8, r=18, t=18, b=8))
+    fig.update_xaxes(type='category', showgrid=False, categoryorder='array', categoryarray=names)
+    fig = _base(fig, mode, height=380, legend=True, margin=dict(l=8, r=18, t=18, b=8))
     fig.update_layout(hovermode='closest')
     return fig
 
 
+def reference_label(short, reference):
+    return short.get(reference, reference) if reference else 'Reference unit'
+
+
 def monthly_bars(monthly, overall_value, measure, mode):
     """One bar per month for `measure` ('Availability (%)' or 'Calendar Availability (%)'), with the days under each month and the
-    whole-window figure as a dashed line. Months below the whole-window figure are orange, the rest blue (the notebook's chart)."""
+    whole-window figure as a dashed line. Months below the whole-window figure are orange with diagonal lines, the rest solid blue."""
     p = PAL[mode]
     d = monthly.reset_index(drop=True)
     values = d[measure].astype(float).to_numpy()
     labels = [f'{pd.Timestamp(m + "-01"):%b %Y}<br>({int(n)} d)' for m, n in zip(d['Month'], d['Days'])]
-    colours = [p['main'] if v < overall_value else p['alt'] for v in values]
+    below = values < overall_value
     name = measure.replace(' (%)', '')
-    fig = go.Figure(go.Bar(x=labels, y=values, marker_color=colours, text=[f'{v:.1f}' for v in values], textposition='outside',
-                           textfont=dict(color=p['ink'], size=12), cliponaxis=False,
-                           hovertemplate='%{x}<br>' + name + ' %{y:.1f}%<extra></extra>', showlegend=False))
-    fig.add_hline(y=overall_value, line=dict(color=p['ink'], width=1.4, dash='dash'), annotation_text=f'Overall {overall_value:.1f}%',
+    fig = go.Figure()
+    for flag, title, color, shape in ((True, 'Below the overall figure', p['main'], '/'), (False, 'At or above the overall figure', p['alt'], '')):
+        sel = below == flag
+        if not sel.any():
+            continue
+        fig.add_trace(go.Bar(x=[l for l, k in zip(labels, sel) if k], y=values[sel], marker=_fill(color, shape, mode), name=title,
+                             text=[f'{v:.1f}' for v in values[sel]], textposition='outside', textfont=dict(color=p['ink'], size=12), cliponaxis=False,
+                             hovertemplate='%{x}<br>' + name + ' %{y:.1f}%<extra></extra>'))
+    fig.update_layout(barmode='overlay')
+    fig.add_hline(y=overall_value, layer='below', line=dict(color=p['ink'], width=1.4, dash='dash'), annotation_text=f'Overall {overall_value:.1f}%',
                   annotation_position='bottom right', annotation_font=dict(color=p['ink'], size=12))
     fig.update_yaxes(range=[0, 105], title_text=name + ' (%)', tickvals=[0, 20, 40, 60, 80, 100])
-    fig.update_xaxes(type='category', showgrid=False)
-    fig = _base(fig, mode, height=380, legend=False, margin=dict(l=8, r=18, t=18, b=8))
+    fig.update_xaxes(type='category', showgrid=False, categoryorder='array', categoryarray=labels)
+    fig = _base(fig, mode, height=380, legend=True, margin=dict(l=8, r=18, t=18, b=8))
     fig.update_layout(hovermode='closest')
     return fig
 ''',
@@ -6789,6 +6863,8 @@ def render_integrity(a, mode):
         dc_metric_card('Calendar Availability', fmt_pct(M.calendar_availability), 'of the full time base', _ICON_CLOCK, 'green', '%'),
         dc_metric_card('Utilization', fmt_pct(M.utilization), 'of the time base planned for production', _ICON_BAR_CHART, 'coral', '%'),
     ]))
+    with st.expander('What do these three numbers mean?', expanded=True):
+        md(guide.availability_explainer_html(M))
     if M.pm and M.pm > 0:
         if a.options.get('planned_maintenance') == 'exclude_from_calculation':
             st.caption(f'Planned maintenance left out: {M.pm:,.0f} h.')
@@ -6808,7 +6884,7 @@ def render_integrity(a, mode):
     overall = table_for(a, 'units_overall')
     if len(overall) and 'Downtime (hrs)' in overall.columns:
         ref = getattr(L, 'reference', None)
-        h2('Hours logged per unit' + (f' ({short_of(a).get(ref, ref)} in red)' if ref in set(overall['Unit']) else ''))
+        h2('Hours logged per unit' + (f' ({short_of(a).get(ref, ref)} in orange)' if ref in set(overall['Unit']) else ''))
         chart(charts.hours_bars(overall, short_of(a), ref, mode), f'hours_{a.line_key}')
         st.caption('Total logged downtime in the analysis window, from each unit\'s daily column. Months you leave out are not counted. One day is 24 hours.')
     if len(overall):
@@ -6846,7 +6922,7 @@ def render_integrity(a, mode):
             md(f'<div class="dc-wb-title">{name} by month: lowest {pd.Timestamp(vals.idxmin() + "-01"):%b %Y} ({vals.min():.1f}%), '
                f'highest {pd.Timestamp(vals.idxmax() + "-01"):%b %Y} ({vals.max():.1f}%)</div>')
             chart(charts.monthly_bars(monthly, float(overall_row[measure].iloc[0]), measure, mode), f'monthly_{measure[:4]}_{a.line_key}_{unit}')
-        st.caption('Orange months are below the whole-window figure (dashed line). Every month uses the unit\'s whole-log planned and unplanned shares, because the reason log has no dates. The first and last months can be partial; see the days under each month.')
+        st.caption('Orange striped months are below the whole-window figure (dashed line); solid blue months are at or above it. Every month uses the unit\'s whole-log planned and unplanned shares, because the reason log has no dates. The first and last months can be partial; see the days under each month.')
 
     frames = {short_of(a).get(u, u): L.dfs[u] for u in L.units if u in L.dfs and len(L.dfs[u])}
     if frames:
