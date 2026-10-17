@@ -296,6 +296,8 @@ def safe_savefig(fig, name, dpi=200, min_dpi=75):
 # printed for each line. Each line can add wording of its own in its configuration (`rules_extra`).
 UNKNOWN_REASON_PATTERNS = [r'^\s*unknown\b']
 MINOR_STOPS_PATTERN = r'\bminor stops?\b'
+# A log row filed by the plant under a Category with this wording is a minor stop, whatever its own reason says.
+MINOR_CATEGORY_PATTERN = r'\bminor stops?\b'
 BASE_RULES = {
     'unplanned_override': [
         r'\bunplanned\b',
@@ -628,6 +630,11 @@ def finish_log(raw, rules, block_cut=False):
     log = log.dropna(subset=['Duration_hours'])[['Category', 'Reason', 'Duration_hours', 'Count']]
     reason = log['Reason'].astype(str)
     log = log.assign(Reason=reason, Class=classify_by_wording(reason, rules)).reset_index(drop=True)
+    # The Category column holds the plant's own "Minor stops" grouping. Unplanned rows under it keep their reason text but are
+    # marked "Minor stops: <reason>", so every later step (themes, clarity, attribution, Weibull) sees them as minor stops.
+    in_minor_category = log['Category'].astype(str).str.contains(MINOR_CATEGORY_PATTERN, case=False, regex=True)
+    mark = in_minor_category & (log['Class'] == 'Unplanned loss') & ~match_any(log['Reason'], [MINOR_STOPS_PATTERN])
+    log['Reason'] = np.where(mark, 'Minor stops: ' + log['Reason'], log['Reason'])
     log['Count'] = log['Count'].fillna(0.0)
     log['Waiting'] = match_any(log['Reason'], rules['waiting']) & (log['Class'] == 'Unplanned loss')
     log.attrs.update(no_hours=no_hours, block_cut_at_row_limit=block_cut)
@@ -2082,11 +2089,11 @@ def clarity_report(L, unit):
     reasons = log['Reason']
     label = np.select(
         [
-            match_any(reasons, UNKNOWN_REASON_PATTERNS + [r'\bunknown\b']),
             match_any(reasons, [MINOR_STOPS_PATTERN]),
+            match_any(reasons, UNKNOWN_REASON_PATTERNS + [r'\bunknown\b']),
             match_any(reasons, L.rules['not_clear']),
         ],
-        ['Unknown', 'Minor stops', 'Not clearly identified'],
+        ['Minor stops', 'Unknown', 'Not clearly identified'],
         default='Clearly identified',
     )
     order = ['Clearly identified', 'Not clearly identified', 'Minor stops', 'Unknown']
@@ -6088,14 +6095,15 @@ def availability_bars(units_overall, short, mode):
     d['name'] = d['Unit'].map(lambda u: short.get(u, u))
     d = d.iloc[::-1]
     fig = go.Figure()
-    for col, name, color in (('Calendar Availability (%)', 'Calendar Availability', p['alt']), ('Availability (%)', 'Availability', p['main'])):
+    measures = [('Utilization (%)', 'Utilization', p['third'])] if 'Utilization (%)' in d.columns else []
+    for col, name, color in (*measures, ('Calendar Availability (%)', 'Calendar Availability', p['alt']), ('Availability (%)', 'Availability', p['main'])):
         fig.add_trace(go.Bar(y=d['name'], x=d[col], orientation='h', name=name, marker_color=color, text=[f'{v:.1f}%' for v in d[col]],
                              textposition='outside', textfont=dict(color=p['ink'], size=11), cliponaxis=False,
                              hovertemplate='%{y}<br>' + name + ' %{x:.1f}%<extra></extra>'))
     fig.update_layout(barmode='group', legend=dict(traceorder='reversed'))
     fig.update_xaxes(range=[0, 112], ticksuffix='%')
     fig.update_yaxes(type='category', showgrid=False)
-    return _base(fig, mode, height=max(280, 52 * len(d) + 110), margin=dict(l=8, r=30, t=10, b=8))
+    return _base(fig, mode, height=max(280, (52 + 14 * len(measures)) * len(d) + 110), margin=dict(l=8, r=30, t=10, b=8))
 
 
 def monthly_lines(units_monthly, unit, mode):
@@ -6830,7 +6838,7 @@ def render_integrity(a, mode):
     if len(monthly):
         h2('By month')
         overall_row = overall[overall['Unit'] == unit] if len(overall) else overall
-        for measure in ('Availability (%)', 'Calendar Availability (%)'):
+        for measure in ('Availability (%)', 'Calendar Availability (%)', 'Utilization (%)'):
             if measure not in monthly.columns or not len(overall_row):
                 continue
             vals = monthly.set_index('Month')[measure]
