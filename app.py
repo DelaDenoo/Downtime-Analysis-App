@@ -6034,12 +6034,13 @@ def availability_help(M, pm_excluded=False):
         'Calendar Availability': (
             'The proportion of total calendar time during which the equipment is operating. Operating time divided by total calendar time. Also called total effective availability.',
             'Forget the plan and look at the clock. Out of every hour that passed, how many hours was the line running? Breakdowns and planned stops both count against it.',
-            f'Out of {base}, the line ran {h(M.running)}.',
+            f'Out of {base}, the line ran {h(M.running)}. Availability {M.availability:.1f}% x Utilization {M.utilization:.1f}% = {M.calendar_availability:.1f}%, so check which of the two is pulling it down.',
             'Use it for the real output you got, for example when someone asks "how much of the month was it actually running?"'),
         'Utilization': (
             'The proportion of total calendar time that is scheduled for production. Planned production time divided by total calendar time. Also called loading.',
             'How much of the time did we intend to run the line at all? It says nothing about breakdowns. It only reflects the plan: planned maintenance, cleaning, changeovers, no orders.',
-            f'{h(M.planned_production)} of {base} was planned for production. The other {h(M.planned)} was planned stops.',
+            f'{h(M.planned_production)} of {base} was planned for production. The other {h(M.planned)} was planned stops.'
+            + (f' Planned maintenance ({h(M.pm)}) is left out of the time base.' if pm_excluded and M.pm else f' Planned maintenance ({h(M.pm)}) counts as a planned stop, so it stays in the time base.' if M.pm else ''),
             'Use it to check the plan, not the machines. If it is low, look at scheduling and planned stops before blaming breakdowns.'),
     }
     out = {}
@@ -6052,9 +6053,7 @@ def availability_help(M, pm_excluded=False):
 
 
 def availability_link_note(M):
-    return (f'Availability {M.availability:.1f}% x Utilization {M.utilization:.1f}% = Calendar Availability {M.calendar_availability:.1f}%. '
-            'Press the ? on a card to see what it means. If Calendar Availability looks poor, check which of the other two is pulling it down: '
-            'low Availability means the line broke down, low Utilization means it was not planned to run.')
+    return 'Click the ? on a card to see what it means.'
 ''',
 # ====================================================================================================
 # module ui.charts
@@ -6888,11 +6887,6 @@ def render_integrity(a, mode):
         dc_metric_card('Utilization', fmt_pct(M.utilization), 'of the time base planned for production', _ICON_BAR_CHART, 'coral', '%', helps['Utilization']),
     ]))
     st.caption(guide.availability_link_note(M))
-    if M.pm and M.pm > 0:
-        if a.options.get('planned_maintenance') == 'exclude_from_calculation':
-            st.caption(f'Planned maintenance left out: {M.pm:,.0f} h.')
-        else:
-            st.caption(f'Planned maintenance ({M.pm:,.0f} h) is counted as a planned stop, so it stays in the time base.')
 
     h2('Where the hours go')
     bridge = table_for(a, 'bridge', unit)
